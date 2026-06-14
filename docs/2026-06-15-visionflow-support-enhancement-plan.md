@@ -112,7 +112,7 @@ backup path
 - `deploy/nginx/licenseguard.conf`
 - `deploy/README.md`
 
-- [ ] 增加 VisionFlow 接入包生成能力。
+- [x] 增加 VisionFlow 接入包生成能力。
 
 License Guard 后台生成：
 
@@ -132,6 +132,8 @@ visionflow-license-bundle.zip
 - 不包含服务端私钥。
 - 不包含 admin token。
 - 默认不包含生产 license key。
+
+已落地：现有 Admin UI 集成包下载接口会生成 secret-free zip，并包含 `.env.example`、`licenseguard.config.json`、`app_id.txt`、`endpoint.txt`、`public_key.txt`、`integration-checklist.md` 和 Go 接入骨架。
 
 - [ ] 增加 Release 发布 CLI 或脚本。
 

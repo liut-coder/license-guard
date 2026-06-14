@@ -2147,10 +2147,17 @@ func buildIntegrationBundle(onboarding OnboardingResponse, endpoint string, lice
 	if licenseKey != "" {
 		envLines = append(envLines, "LICENSE_GUARD_DEMO_LICENSE="+licenseKey)
 	}
+	publicKey := publicKeyFromOnboarding(onboarding)
+	installIDPath := "%LOCALAPPDATA%\\LicenseGuard\\" + onboarding.AppID + "\\install_id"
+	tokenCachePath := "%LOCALAPPDATA%\\LicenseGuard\\" + onboarding.AppID + "\\license_token.json"
 
 	files := map[string]string{
 		"README.md":                        integrationReadme(onboarding, endpoint, licenseKey != ""),
 		".env.example":                     strings.Join(envLines, "\n") + "\n",
+		"licenseguard.config.json":         integrationConfigJSON(onboarding, endpoint, version, publicKey, binaryHash, signer, installIDPath, tokenCachePath),
+		"app_id.txt":                       onboarding.AppID + "\n",
+		"endpoint.txt":                     endpoint + "\n",
+		"public_key.txt":                   publicKey + "\n",
 		"integration-checklist.md":         integrationChecklist(onboarding),
 		"internal/licenseguard/README.md":  licenseguardPackageReadme(),
 		"internal/licenseguard/config.go":  integrationConfigGo(),
@@ -2211,9 +2218,27 @@ func integrationReadme(onboarding OnboardingResponse, endpoint string, includesL
 		licenseLine + "\n\n" +
 		"Files:\n" +
 		"- .env.example: runtime configuration values safe for client code.\n" +
+		"- licenseguard.config.json: importable client configuration without secrets.\n" +
+		"- app_id.txt, endpoint.txt, public_key.txt: single-value files for deployment checks.\n" +
 		"- internal/licenseguard/: minimal integration skeleton for Windows Go apps.\n" +
 		"- integration-checklist.md: acceptance steps matching the Admin UI onboarding workbench.\n\n" +
 		"Do not add SDK Secret, server private keys, admin tokens, or database credentials to the client app.\n"
+}
+
+func integrationConfigJSON(onboarding OnboardingResponse, endpoint string, version string, publicKey string, binaryHash string, signer string, installIDPath string, tokenCachePath string) string {
+	payload := map[string]string{
+		"endpoint":             endpoint,
+		"app_id":               onboarding.AppID,
+		"app_version":          version,
+		"public_key":           publicKey,
+		"binary_hash":          binaryHash,
+		"signer_thumbprint":    signer,
+		"install_id_path":      installIDPath,
+		"token_cache_path":     tokenCachePath,
+		"license_key_strategy": "activation_time",
+	}
+	raw, _ := json.MarshalIndent(payload, "", "  ")
+	return string(raw) + "\n"
 }
 
 func integrationChecklist(onboarding OnboardingResponse) string {

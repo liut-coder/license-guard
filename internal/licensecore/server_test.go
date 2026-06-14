@@ -602,7 +602,18 @@ func TestIntegrationBundleOmitsSecretsAndContainsSkeleton(t *testing.T) {
 	}
 
 	files := readZipFiles(t, rec.Body.Bytes())
-	for _, name := range []string{"README.md", ".env.example", "integration-checklist.md", "internal/licenseguard/config.go", "internal/licenseguard/service.go", "internal/licenseguard/errors.go"} {
+	for _, name := range []string{
+		"README.md",
+		".env.example",
+		"licenseguard.config.json",
+		"app_id.txt",
+		"endpoint.txt",
+		"public_key.txt",
+		"integration-checklist.md",
+		"internal/licenseguard/config.go",
+		"internal/licenseguard/service.go",
+		"internal/licenseguard/errors.go",
+	} {
 		if files[name] == "" {
 			t.Fatalf("bundle missing %s; files = %#v", name, files)
 		}
@@ -613,6 +624,19 @@ func TestIntegrationBundleOmitsSecretsAndContainsSkeleton(t *testing.T) {
 	}
 	if !strings.Contains(files[".env.example"], "LICENSE_GUARD_PUBLIC_KEY=") || !strings.Contains(files[".env.example"], "LICENSE_GUARD_APP_ID="+DemoAppID) {
 		t.Fatalf("env example missing public config: %s", files[".env.example"])
+	}
+	var config map[string]string
+	if err := json.Unmarshal([]byte(files["licenseguard.config.json"]), &config); err != nil {
+		t.Fatalf("decode licenseguard.config.json: %v", err)
+	}
+	if config["app_id"] != DemoAppID || config["endpoint"] != "https://license.example/v1" || config["license_key_strategy"] != "activation_time" {
+		t.Fatalf("unexpected config json: %#v", config)
+	}
+	if strings.TrimSpace(files["app_id.txt"]) != DemoAppID || strings.TrimSpace(files["endpoint.txt"]) != "https://license.example/v1" {
+		t.Fatalf("single-value files mismatch: app=%q endpoint=%q", files["app_id.txt"], files["endpoint.txt"])
+	}
+	if strings.TrimSpace(files["public_key.txt"]) == "" || strings.TrimSpace(files["public_key.txt"]) != config["public_key"] {
+		t.Fatalf("public key file mismatch")
 	}
 	if !strings.Contains(files["internal/licenseguard/errors.go"], "INTEGRITY_FAILED") {
 		t.Fatalf("errors skeleton missing code mapping: %s", files["internal/licenseguard/errors.go"])
