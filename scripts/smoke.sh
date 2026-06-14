@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${PORT:-18090}"
 DATA_DIR="$(mktemp -d)"
 CLIENT_DIR="$(mktemp -d)"
+OUTPUT_DIR="$(mktemp -d)"
+export OUTPUT_DIR
 LOG_FILE="$DATA_DIR/server.log"
 
 cleanup() {
@@ -12,7 +14,7 @@ cleanup() {
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" >/dev/null 2>&1 || true
   fi
-  rm -rf "$DATA_DIR" "$CLIENT_DIR"
+  rm -rf "$DATA_DIR" "$CLIENT_DIR" "$OUTPUT_DIR"
 }
 trap cleanup EXIT
 
@@ -247,20 +249,20 @@ NODE
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode activate >/tmp/license-guard-activate.json
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode activate >$OUTPUT_DIR/license-guard-activate.json
 
-grep -q '"allowed": true' /tmp/license-guard-activate.json
-grep -q '"available": true' /tmp/license-guard-activate.json
-grep -q '"required": true' /tmp/license-guard-activate.json
-grep -q '"latest_version": "1.5.0"' /tmp/license-guard-activate.json
-grep -q 'export.enabled: true' /tmp/license-guard-activate.json
+grep -q '"allowed": true' $OUTPUT_DIR/license-guard-activate.json
+grep -q '"available": true' $OUTPUT_DIR/license-guard-activate.json
+grep -q '"required": true' $OUTPUT_DIR/license-guard-activate.json
+grep -q '"latest_version": "1.5.0"' $OUTPUT_DIR/license-guard-activate.json
+grep -q 'export.enabled: true' $OUTPUT_DIR/license-guard-activate.json
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode local >/tmp/license-guard-local.json
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode local >$OUTPUT_DIR/license-guard-local.json
 
-grep -q '"allowed": true' /tmp/license-guard-local.json
-grep -q 'export.enabled: true' /tmp/license-guard-local.json
+grep -q '"allowed": true' $OUTPUT_DIR/license-guard-local.json
+grep -q 'export.enabled: true' $OUTPUT_DIR/license-guard-local.json
 
 node - <<NODE
 (async () => {
@@ -275,11 +277,11 @@ NODE
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-rollout-zero.json
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-rollout-zero.json
 
 node - <<'NODE'
 const fs = require('fs');
-const data = JSON.parse(fs.readFileSync('/tmp/license-guard-rollout-zero.json', 'utf8'));
+const data = JSON.parse(fs.readFileSync(process.env.OUTPUT_DIR + '/license-guard-rollout-zero.json', 'utf8'));
 if (!data.allowed) throw new Error('rollout zero verification should be allowed');
 if (data.update && data.update.available) throw new Error('rollout zero should not return an update advisory');
 NODE
@@ -297,16 +299,16 @@ NODE
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-min-supported-update.json
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-min-supported-update.json
 
-grep -q '"available": true' /tmp/license-guard-min-supported-update.json
-grep -q '"required": true' /tmp/license-guard-min-supported-update.json
-grep -q '"latest_version": "1.5.0"' /tmp/license-guard-min-supported-update.json
+grep -q '"available": true' $OUTPUT_DIR/license-guard-min-supported-update.json
+grep -q '"required": true' $OUTPUT_DIR/license-guard-min-supported-update.json
+grep -q '"latest_version": "1.5.0"' $OUTPUT_DIR/license-guard-min-supported-update.json
 
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/stolen_install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-stolen-token.json 2>/tmp/license-guard-stolen-token.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-stolen-token.json 2>$OUTPUT_DIR/license-guard-stolen-token.err
 STOLEN_TOKEN_EXIT=$?
 set -e
 
@@ -314,13 +316,13 @@ if [[ "$STOLEN_TOKEN_EXIT" -eq 0 ]]; then
   echo "stolen token verification unexpectedly passed" >&2
   exit 1
 fi
-grep -q '"allowed": false' /tmp/license-guard-stolen-token.json
-grep -q '"code": "TOKEN_DEVICE_MISMATCH"' /tmp/license-guard-stolen-token.json
+grep -q '"allowed": false' $OUTPUT_DIR/license-guard-stolen-token.json
+grep -q '"code": "TOKEN_DEVICE_MISMATCH"' $OUTPUT_DIR/license-guard-stolen-token.json
 
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/stolen_install_id_heartbeat" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode heartbeat >/tmp/license-guard-stolen-heartbeat.txt 2>/tmp/license-guard-stolen-heartbeat.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode heartbeat >$OUTPUT_DIR/license-guard-stolen-heartbeat.txt 2>$OUTPUT_DIR/license-guard-stolen-heartbeat.err
 STOLEN_HEARTBEAT_EXIT=$?
 set -e
 
@@ -328,19 +330,19 @@ if [[ "$STOLEN_HEARTBEAT_EXIT" -eq 0 ]]; then
   echo "stolen token heartbeat unexpectedly passed" >&2
   exit 1
 fi
-grep -q 'TOKEN_DEVICE_MISMATCH' /tmp/license-guard-stolen-heartbeat.err
+grep -q 'TOKEN_DEVICE_MISMATCH' $OUTPUT_DIR/license-guard-stolen-heartbeat.err
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-verify.json
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-verify.json
 
-grep -q '"allowed": true' /tmp/license-guard-verify.json
+grep -q '"allowed": true' $OUTPUT_DIR/license-guard-verify.json
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode heartbeat >/tmp/license-guard-heartbeat.txt
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode heartbeat >$OUTPUT_DIR/license-guard-heartbeat.txt
 
-grep -q 'heartbeat ok' /tmp/license-guard-heartbeat.txt
+grep -q 'heartbeat ok' $OUTPUT_DIR/license-guard-heartbeat.txt
 
 node - <<NODE
 (async () => {
@@ -376,7 +378,7 @@ NODE
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/deactivate_install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/deactivate_token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode activate >/tmp/license-guard-deactivate-activate.json
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode activate >$OUTPUT_DIR/license-guard-deactivate-activate.json
 
 DEACTIVATE_DEVICE_ID="$(
   node - <<NODE
@@ -398,15 +400,15 @@ cp "$CLIENT_DIR/deactivate_token.json" "$CLIENT_DIR/deactivate_token_old.json"
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/deactivate_install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/deactivate_token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode deactivate >/tmp/license-guard-deactivate.txt
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode deactivate >$OUTPUT_DIR/license-guard-deactivate.txt
 
-grep -q 'deactivate ok' /tmp/license-guard-deactivate.txt
+grep -q 'deactivate ok' $OUTPUT_DIR/license-guard-deactivate.txt
 cp "$CLIENT_DIR/deactivate_token_old.json" "$CLIENT_DIR/deactivate_token.json"
 
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/deactivate_install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/deactivate_token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-deactivated-token.json 2>/tmp/license-guard-deactivated-token.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-deactivated-token.json 2>$OUTPUT_DIR/license-guard-deactivated-token.err
 DEACTIVATED_TOKEN_EXIT=$?
 set -e
 
@@ -414,14 +416,14 @@ if [[ "$DEACTIVATED_TOKEN_EXIT" -eq 0 ]]; then
   echo "deactivated token verification unexpectedly passed" >&2
   exit 1
 fi
-grep -q '"allowed": false' /tmp/license-guard-deactivated-token.json
-grep -q '"code": "TOKEN_DEACTIVATED"' /tmp/license-guard-deactivated-token.json
+grep -q '"allowed": false' $OUTPUT_DIR/license-guard-deactivated-token.json
+grep -q '"code": "TOKEN_DEACTIVATED"' $OUTPUT_DIR/license-guard-deactivated-token.json
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/deactivate_install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/deactivate_token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode activate >/tmp/license-guard-reactivate.json
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode activate >$OUTPUT_DIR/license-guard-reactivate.json
 
-grep -q '"allowed": true' /tmp/license-guard-reactivate.json
+grep -q '"allowed": true' $OUTPUT_DIR/license-guard-reactivate.json
 
 node - <<NODE
 (async () => {
@@ -437,7 +439,7 @@ NODE
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/deactivate_install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/deactivate_token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-unbound-token.json 2>/tmp/license-guard-unbound-token.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-unbound-token.json 2>$OUTPUT_DIR/license-guard-unbound-token.err
 UNBOUND_TOKEN_EXIT=$?
 set -e
 
@@ -445,8 +447,8 @@ if [[ "$UNBOUND_TOKEN_EXIT" -eq 0 ]]; then
   echo "unbound token verification unexpectedly passed" >&2
   exit 1
 fi
-grep -q '"allowed": false' /tmp/license-guard-unbound-token.json
-grep -q '"code": "TOKEN_DEACTIVATED"' /tmp/license-guard-unbound-token.json
+grep -q '"allowed": false' $OUTPUT_DIR/license-guard-unbound-token.json
+grep -q '"code": "TOKEN_DEACTIVATED"' $OUTPUT_DIR/license-guard-unbound-token.json
 
 DEVICE_ID="$(
   node - <<NODE
@@ -475,7 +477,7 @@ NODE
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-blocked-device.json 2>/tmp/license-guard-blocked-device.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-blocked-device.json 2>$OUTPUT_DIR/license-guard-blocked-device.err
 BLOCKED_DEVICE_EXIT=$?
 set -e
 
@@ -483,8 +485,8 @@ if [[ "$BLOCKED_DEVICE_EXIT" -eq 0 ]]; then
   echo "blocked device verification unexpectedly passed" >&2
   exit 1
 fi
-grep -q '"allowed": false' /tmp/license-guard-blocked-device.json
-grep -q '"code": "DEVICE_BLOCKED"' /tmp/license-guard-blocked-device.json
+grep -q '"allowed": false' $OUTPUT_DIR/license-guard-blocked-device.json
+grep -q '"code": "DEVICE_BLOCKED"' $OUTPUT_DIR/license-guard-blocked-device.json
 
 node - <<NODE
 (async () => {
@@ -500,7 +502,7 @@ NODE
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify -binary-hash tampered-hash >/tmp/license-guard-tamper.json 2>/tmp/license-guard-tamper.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify -binary-hash tampered-hash >$OUTPUT_DIR/license-guard-tamper.json 2>$OUTPUT_DIR/license-guard-tamper.err
 TAMPER_EXIT=$?
 set -e
 
@@ -508,8 +510,8 @@ if [[ "$TAMPER_EXIT" -eq 0 ]]; then
   echo "tamper verification unexpectedly passed" >&2
   exit 1
 fi
-grep -q '"allowed": false' /tmp/license-guard-tamper.json
-grep -q '"code": "INTEGRITY_FAILED"' /tmp/license-guard-tamper.json
+grep -q '"allowed": false' $OUTPUT_DIR/license-guard-tamper.json
+grep -q '"code": "INTEGRITY_FAILED"' $OUTPUT_DIR/license-guard-tamper.json
 
 node - <<NODE
 (async () => {
@@ -536,7 +538,7 @@ NODE
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify -version 1.3.0 -binary-hash demo-main-binary-sha256-v130 >/tmp/license-guard-blocked-version.json 2>/tmp/license-guard-blocked-version.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify -version 1.3.0 -binary-hash demo-main-binary-sha256-v130 >$OUTPUT_DIR/license-guard-blocked-version.json 2>$OUTPUT_DIR/license-guard-blocked-version.err
 BLOCKED_VERSION_EXIT=$?
 set -e
 
@@ -544,8 +546,8 @@ if [[ "$BLOCKED_VERSION_EXIT" -eq 0 ]]; then
   echo "blocked version verification unexpectedly passed" >&2
   exit 1
 fi
-grep -q '"allowed": false' /tmp/license-guard-blocked-version.json
-grep -q '"code": "INTEGRITY_FAILED"' /tmp/license-guard-blocked-version.json
+grep -q '"allowed": false' $OUTPUT_DIR/license-guard-blocked-version.json
+grep -q '"code": "INTEGRITY_FAILED"' $OUTPUT_DIR/license-guard-blocked-version.json
 
 LICENSE_ID="$(
   node - <<NODE
@@ -575,7 +577,7 @@ NODE
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-suspended-license.json 2>/tmp/license-guard-suspended-license.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-suspended-license.json 2>$OUTPUT_DIR/license-guard-suspended-license.err
 SUSPENDED_LICENSE_EXIT=$?
 set -e
 
@@ -583,8 +585,8 @@ if [[ "$SUSPENDED_LICENSE_EXIT" -eq 0 ]]; then
   echo "suspended license verification unexpectedly passed" >&2
   exit 1
 fi
-grep -q '"allowed": false' /tmp/license-guard-suspended-license.json
-grep -q '"code": "LICENSE_SUSPENDED"' /tmp/license-guard-suspended-license.json
+grep -q '"allowed": false' $OUTPUT_DIR/license-guard-suspended-license.json
+grep -q '"code": "LICENSE_SUSPENDED"' $OUTPUT_DIR/license-guard-suspended-license.json
 
 node - <<NODE
 (async () => {
@@ -599,9 +601,9 @@ NODE
 
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-resumed-license.json
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-resumed-license.json
 
-grep -q '"allowed": true' /tmp/license-guard-resumed-license.json
+grep -q '"allowed": true' $OUTPUT_DIR/license-guard-resumed-license.json
 
 node - <<NODE
 (async () => {
@@ -617,7 +619,7 @@ NODE
 set +e
 LG_INSTALL_ID_PATH="$CLIENT_DIR/install_id" \
 LG_TOKEN_CACHE_PATH="$CLIENT_DIR/token.json" \
-go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >/tmp/license-guard-revoked-license.json 2>/tmp/license-guard-revoked-license.err
+go run ./examples/windows-go-demo -endpoint "http://127.0.0.1:${PORT}/v1" -public-key "$PUBLIC_KEY" -mode verify >$OUTPUT_DIR/license-guard-revoked-license.json 2>$OUTPUT_DIR/license-guard-revoked-license.err
 REVOKED_LICENSE_EXIT=$?
 set -e
 
@@ -625,8 +627,8 @@ if [[ "$REVOKED_LICENSE_EXIT" -eq 0 ]]; then
   echo "revoked license verification unexpectedly passed" >&2
   exit 1
 fi
-grep -q '"allowed": false' /tmp/license-guard-revoked-license.json
-grep -q '"code": "LICENSE_REVOKED"' /tmp/license-guard-revoked-license.json
+grep -q '"allowed": false' $OUTPUT_DIR/license-guard-revoked-license.json
+grep -q '"code": "LICENSE_REVOKED"' $OUTPUT_DIR/license-guard-revoked-license.json
 
 node - <<NODE
 (async () => {
