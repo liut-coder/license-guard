@@ -173,6 +173,27 @@ Production-oriented templates live under `deploy/`:
 
 See `deploy/README.md` for the operational flow and backup caveats.
 
+## Release Publish CLI
+
+`licenseguardctl` can register a release without manually copying artifact hashes:
+
+```bash
+go run ./cmd/licenseguardctl release publish \
+  -server https://licenseguard.example.com \
+  -admin-token "$LICENSE_GUARD_ADMIN_TOKEN" \
+  -app-id app_visionflow_windows_prod \
+  -platform windows \
+  -version 0.2.0 \
+  -build-number 42 \
+  -main-binary ./dist/VisionFlow.exe \
+  -package ./dist/VisionFlowSetup.exe \
+  -signer-thumbprint "<certificate-thumbprint>" \
+  -download-url https://download.example.com/VisionFlowSetup.exe \
+  -release-notes-file ./release-notes.md
+```
+
+The CLI computes `main_binary_hash` and `package_sha256` from the supplied files. Sign the EXE before running it.
+
 ## PostgreSQL Storage
 
 JSON is still the default for local development. For a deployable server, initialize PostgreSQL first:

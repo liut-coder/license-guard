@@ -135,7 +135,7 @@ visionflow-license-bundle.zip
 
 已落地：现有 Admin UI 集成包下载接口会生成 secret-free zip，并包含 `.env.example`、`licenseguard.config.json`、`app_id.txt`、`endpoint.txt`、`public_key.txt`、`integration-checklist.md` 和 Go 接入骨架。
 
-- [ ] 增加 Release 发布 CLI 或脚本。
+- [x] 增加 Release 发布 CLI 或脚本。
 
 建议命令：
 
@@ -159,6 +159,8 @@ mandatory
 min_supported_version
 rollout_percent
 ```
+
+已落地：`cmd/licenseguardctl release publish` 支持从签名后 EXE 和安装包自动计算 `main_binary_hash`、`package_sha256`，再调用 Admin API 创建 Release。
 
 - [ ] 支持 VisionFlow 发布后自动登记 Release。
 
