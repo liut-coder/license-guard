@@ -32,7 +32,7 @@
 
 ### P0：VisionFlow 接入前置
 
-- [ ] 修复 Windows DPAPI 缓存 bug。
+- [x] 修复 Windows DPAPI 缓存 bug。
 
 当前风险：`sdk/go/licenseguard/cache_windows.go` 中 `dpapiProtect` / `dpapiUnprotect` 返回 `unsafe.Slice(out.pbData, out.cbData)` 后再 `LocalFree`，调用方可能拿到已释放内存。
 
@@ -43,13 +43,13 @@ outBytes := append([]byte(nil), unsafe.Slice(out.pbData, out.cbData)...)
 return outBytes, nil
 ```
 
-- [ ] 跑通 License Guard 全量测试：
+- [x] 跑通 License Guard 全量测试：
 
 ```text
 go test ./...
 ```
 
-- [ ] 保持短期 module 兼容。
+- [x] 保持短期 module 兼容。
 
 当前 module：
 
@@ -74,9 +74,17 @@ Entitlements:
 ```
 
 - [ ] 创建首个 VisionFlow License，并验证设备数限制。
-- [ ] 确认 `/v1/public-key` 返回值可用于客户端本地验签。
+- [x] 确认 `/v1/public-key` 返回值可用于客户端本地验签。
 
 ### P1：部署与发布自动化
+
+已完成的本地验证：
+
+- `go test ./...`
+- `docker-compose --env-file deploy/.env.example -f deploy/docker-compose.yml config`
+- `go run ./cmd/licenseguardctl release publish -dry-run ...`
+- `bash scripts/smoke.sh`（通过 Git Bash）
+- `bash scripts/production-check.sh`（通过 Git Bash）
 
 - [x] 提供服务端部署模板。
 
