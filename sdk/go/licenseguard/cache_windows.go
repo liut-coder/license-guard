@@ -95,7 +95,7 @@ func dpapiProtect(plain []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer procLocalFree.Call(uintptr(unsafe.Pointer(out.pbData)))
-	return unsafe.Slice(out.pbData, out.cbData), nil
+	return copyDataBlob(out), nil
 }
 
 func dpapiUnprotect(protected []byte) ([]byte, error) {
@@ -117,5 +117,12 @@ func dpapiUnprotect(protected []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer procLocalFree.Call(uintptr(unsafe.Pointer(out.pbData)))
-	return unsafe.Slice(out.pbData, out.cbData), nil
+	return copyDataBlob(out), nil
+}
+
+func copyDataBlob(blob dataBlob) []byte {
+	if blob.cbData == 0 {
+		return []byte{}
+	}
+	return append([]byte(nil), unsafe.Slice(blob.pbData, blob.cbData)...)
 }
