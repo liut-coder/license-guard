@@ -1,0 +1,12 @@
+[Unit]
+Description=License Guard PostgreSQL migration
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=licenseguard
+Group=licenseguard
+EnvironmentFile=/etc/licenseguard/licenseguard.env
+WorkingDirectory=/opt/licenseguard
+ExecStart=/usr/local/bin/licenseguard-migrate -database-url=${DATABASE_URL} -migrations-dir=/opt/licenseguard/migrations

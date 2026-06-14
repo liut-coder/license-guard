@@ -78,7 +78,7 @@ Entitlements:
 
 ### P1：部署与发布自动化
 
-- [ ] 提供服务端部署模板。
+- [x] 提供服务端部署模板。
 
 建议新增：
 
@@ -100,6 +100,17 @@ HTTPS 反代
 health check
 backup path
 ```
+
+已落地：
+
+- `deploy/Dockerfile`
+- `deploy/docker-compose.yml`
+- `deploy/.env.example`
+- `deploy/systemd/licenseguard.service`
+- `deploy/systemd/licenseguard-migrate.service`
+- `deploy/systemd/licenseguard.env.example`
+- `deploy/nginx/licenseguard.conf`
+- `deploy/README.md`
 
 - [ ] 增加 VisionFlow 接入包生成能力。
 

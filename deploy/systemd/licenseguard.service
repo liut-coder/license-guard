@@ -1,0 +1,23 @@
+[Unit]
+Description=License Guard API and Admin UI
+After=network-online.target licenseguard-migrate.service
+Wants=network-online.target
+Requires=licenseguard-migrate.service
+
+[Service]
+Type=simple
+User=licenseguard
+Group=licenseguard
+EnvironmentFile=/etc/licenseguard/licenseguard.env
+WorkingDirectory=/opt/licenseguard
+ExecStart=/usr/local/bin/licenseguard-server -addr=127.0.0.1:8090 -store=postgres -database-url=${DATABASE_URL} -key-dir=/var/lib/licenseguard/keys -admin-dir=/opt/licenseguard/web/admin -migrations-dir=/opt/licenseguard/migrations
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/licenseguard
+
+[Install]
+WantedBy=multi-user.target

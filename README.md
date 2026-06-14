@@ -162,6 +162,17 @@ The production check runs unit tests, builds the server and migration binaries, 
 
 Use `docs/04-production-readiness-checklist.md` as the manual gate for PostgreSQL, HTTPS, backups, persistent `-key-dir`, demo seed caveats, admin access controls, and multi-replica migration rollout. Production traffic must use HTTPS; `licenseguard-migrate -seed-demo` is for local/demo databases, not production tenants.
 
+## Deployment Templates
+
+Production-oriented templates live under `deploy/`:
+
+- `deploy/docker-compose.yml` starts PostgreSQL, runs `licenseguard-migrate`, then starts the API with a persistent signing-key volume.
+- `deploy/.env.example` lists the environment values that must be replaced before deployment.
+- `deploy/nginx/licenseguard.conf` is a HTTPS reverse-proxy baseline.
+- `deploy/systemd/` contains VM/bare-metal service units for migration and API startup.
+
+See `deploy/README.md` for the operational flow and backup caveats.
+
 ## PostgreSQL Storage
 
 JSON is still the default for local development. For a deployable server, initialize PostgreSQL first:
