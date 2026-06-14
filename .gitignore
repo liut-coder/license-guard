@@ -1,0 +1,8 @@
+data/
+*.log
+*.tmp
+
+# Local build outputs
+/licenseguard-server
+/licenseguard-migrate
+/windows-go-demo

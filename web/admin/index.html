@@ -1,0 +1,2651 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>License Guard Admin</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #fbfdff;
+        --ink: #0c0d10;
+        --soft: #4d5662;
+        --muted: #87919e;
+        --line: rgba(18, 24, 33, 0.09);
+        --line-strong: rgba(18, 24, 33, 0.15);
+        --surface: rgba(255, 255, 255, 0.78);
+        --surface-strong: rgba(255, 255, 255, 0.94);
+        --sky: #1b78b9;
+        --sky-soft: rgba(54, 154, 220, 0.15);
+        --mint: #258966;
+        --mint-soft: rgba(55, 184, 131, 0.15);
+        --teal: #0f8790;
+        --teal-soft: rgba(43, 178, 188, 0.14);
+        --amber: #a56a27;
+        --amber-soft: rgba(240, 169, 82, 0.18);
+        --coral: #b85d50;
+        --coral-soft: rgba(226, 111, 92, 0.14);
+        --rose: #b24652;
+        --rose-soft: rgba(224, 92, 112, 0.14);
+        --shine: rgba(255, 255, 255, 0.72);
+        --shadow: 0 38px 120px rgba(34, 43, 57, 0.13);
+        --shadow-soft: 0 18px 48px rgba(34, 43, 57, 0.09);
+        --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+        --spring: cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        min-height: 100%;
+        background: white;
+      }
+
+      body {
+        position: relative;
+        min-width: 320px;
+        min-height: 100vh;
+        margin: 0;
+        overflow-x: hidden;
+        background:
+          linear-gradient(180deg, #ffffff 0%, #f7fbff 44%, #fff9f2 100%),
+          #ffffff;
+        color: var(--ink);
+        font-family:
+          "SF Pro Display",
+          "SF Pro Text",
+          -apple-system,
+          BlinkMacSystemFont,
+          "PingFang SC",
+          "HarmonyOS Sans SC",
+          "MiSans",
+          "Hiragino Sans GB",
+          "Segoe UI",
+          "Microsoft YaHei UI",
+          system-ui,
+          sans-serif;
+        font-variant-numeric: tabular-nums;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: geometricPrecision;
+      }
+
+      body::before {
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        background:
+          linear-gradient(112deg, rgba(65, 154, 219, 0.28) 0%, transparent 31%),
+          linear-gradient(154deg, transparent 24%, rgba(80, 192, 151, 0.23) 43%, transparent 64%),
+          linear-gradient(34deg, transparent 48%, rgba(242, 179, 103, 0.28) 78%, transparent 100%),
+          linear-gradient(74deg, transparent 0 64%, rgba(218, 111, 95, 0.12) 86%, transparent 100%);
+        background-size: 190% 190%;
+        content: "";
+        filter: saturate(1.08);
+        pointer-events: none;
+        animation: ambientFlow 18s ease-in-out infinite alternate;
+      }
+
+      body::after {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background:
+          repeating-linear-gradient(90deg, rgba(18, 24, 33, 0.018) 0 1px, transparent 1px 84px),
+          repeating-linear-gradient(0deg, rgba(18, 24, 33, 0.012) 0 1px, transparent 1px 84px),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.16));
+        content: "";
+        opacity: 0.7;
+        pointer-events: none;
+      }
+
+      ::selection {
+        background: rgba(43, 178, 188, 0.18);
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .login {
+        display: grid;
+        position: relative;
+        isolation: isolate;
+        min-height: 100vh;
+        overflow: hidden;
+        place-items: center;
+        padding: 28px;
+        perspective: 1200px;
+      }
+
+      .login::before,
+      .login::after {
+        position: fixed;
+        z-index: -1;
+        content: "";
+        pointer-events: none;
+      }
+
+      .login::before {
+        inset: 7% -16% auto;
+        height: 28vh;
+        background: linear-gradient(92deg, transparent 6%, rgba(65, 154, 219, 0.2) 24%, rgba(80, 192, 151, 0.18) 48%, rgba(242, 179, 103, 0.2) 74%, transparent 94%);
+        filter: blur(18px);
+        opacity: 0.76;
+        transform: rotate(-6deg);
+        animation: ribbonDrift 12s ease-in-out infinite alternate;
+      }
+
+      .login::after {
+        inset: auto -14% 8%;
+        height: 18vh;
+        background: linear-gradient(94deg, transparent 0%, rgba(255, 255, 255, 0.9) 24%, rgba(43, 178, 188, 0.16) 52%, rgba(226, 111, 92, 0.14) 76%, transparent 100%);
+        filter: blur(24px);
+        opacity: 0.58;
+        transform: rotate(4deg);
+        animation: ribbonDrift 15s ease-in-out infinite alternate-reverse;
+      }
+
+      .login-card,
+      .card {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: 32px;
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.74)),
+          var(--surface);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(26px) saturate(180%);
+        -webkit-backdrop-filter: blur(26px) saturate(180%);
+      }
+
+      .login-card {
+        background:
+          linear-gradient(154deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 255, 255, 0.88) 58%, rgba(255, 250, 244, 0.84) 100%),
+          linear-gradient(43deg, rgba(65, 154, 219, 0.2), transparent 44%),
+          linear-gradient(138deg, transparent 45%, rgba(55, 184, 131, 0.16) 64%, rgba(242, 179, 103, 0.18) 100%);
+      }
+
+      .login-card::before,
+      .card::before {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: linear-gradient(138deg, rgba(255, 255, 255, 0.96), rgba(65, 154, 219, 0.26), rgba(80, 192, 151, 0.18), rgba(242, 179, 103, 0.22));
+        content: "";
+        pointer-events: none;
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+      }
+
+      .login-card {
+        --tilt-x: 0deg;
+        --tilt-y: 0deg;
+        width: min(454px, 100%);
+        overflow: hidden;
+        padding: 44px;
+        box-shadow:
+          0 40px 120px rgba(29, 38, 52, 0.13),
+          0 10px 28px rgba(29, 38, 52, 0.06),
+          inset 0 1px 0 rgba(255, 255, 255, 0.82);
+        transform: perspective(1200px) rotateX(var(--tilt-y)) rotateY(var(--tilt-x));
+        transform-style: preserve-3d;
+        transition: box-shadow 420ms var(--spring), translate 420ms var(--spring), transform 420ms var(--spring);
+        animation: loginRise 760ms var(--spring) both;
+      }
+
+      .login-card:hover {
+        translate: 0 -3px;
+        box-shadow:
+          0 46px 140px rgba(29, 38, 52, 0.16),
+          0 14px 34px rgba(29, 38, 52, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 0.86);
+      }
+
+      .login-card::after {
+        position: absolute;
+        inset: auto -24% -40% -24%;
+        height: 74%;
+        background:
+          linear-gradient(96deg, transparent 8%, rgba(65, 154, 219, 0.13), rgba(80, 192, 151, 0.11), rgba(242, 179, 103, 0.16), transparent 92%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 72%);
+        content: "";
+        filter: blur(1px);
+        pointer-events: none;
+        transform: rotate(-4deg);
+        animation: glassSweep 7s ease-in-out infinite alternate;
+      }
+
+      .login-card > .button,
+      .login-card > .error-text {
+        position: relative;
+        z-index: 1;
+      }
+
+      .brand {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .mark {
+        position: relative;
+        display: grid;
+        isolation: isolate;
+        width: 46px;
+        height: 46px;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.52);
+        border-radius: 18px;
+        background:
+          linear-gradient(140deg, rgba(255, 255, 255, 0.22), transparent 38%),
+          linear-gradient(135deg, #12151a 0%, #353d46 48%, #0d0f12 100%);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42), 0 16px 34px rgba(17, 17, 19, 0.17);
+        color: white;
+        font-weight: 760;
+        animation: markFloat 5s ease-in-out infinite;
+      }
+
+      .mark::before {
+        position: absolute;
+        inset: -36%;
+        z-index: 0;
+        background: conic-gradient(from 120deg, rgba(65, 154, 219, 0.82), rgba(80, 192, 151, 0.7), rgba(242, 179, 103, 0.72), rgba(226, 111, 92, 0.52), rgba(65, 154, 219, 0.82));
+        content: "";
+        opacity: 0.2;
+        animation: slowSpin 10s linear infinite;
+      }
+
+      .mark::after {
+        position: absolute;
+        inset: auto 6px 5px 6px;
+        height: 3px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #64b9e8, #54c88e, #f0b16c, #db7567);
+        content: "";
+        opacity: 0.9;
+        animation: accentPulse 2.8s ease-in-out infinite alternate;
+      }
+
+      h1 {
+        position: relative;
+        z-index: 1;
+        margin: 32px 0 10px;
+        color: #0a0b0d;
+        font-size: clamp(36px, 5vw, 46px);
+        font-weight: 740;
+        letter-spacing: 0;
+        line-height: 1.04;
+        text-wrap: balance;
+      }
+
+      .login-card h1 {
+        font-size: clamp(36px, 7vw, 44px);
+        font-weight: 740;
+        white-space: nowrap;
+      }
+
+      h2 {
+        margin: 0 0 24px;
+        font-size: 22px;
+        font-weight: 720;
+        letter-spacing: 0;
+      }
+
+      p {
+        position: relative;
+        z-index: 1;
+        margin: 0;
+        color: var(--soft);
+        line-height: 1.65;
+      }
+
+      .field {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        gap: 9px;
+        margin-top: 18px;
+      }
+
+      label {
+        color: var(--soft);
+        font-size: 13px;
+        font-weight: 680;
+      }
+
+      input,
+      select,
+      textarea {
+        min-height: 49px;
+        width: 100%;
+        border: 1px solid rgba(18, 24, 33, 0.1);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+        color: var(--ink);
+        outline: none;
+        padding: 0 18px;
+        transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease, transform 180ms ease;
+      }
+
+      input,
+      select {
+        border-radius: 999px;
+      }
+
+      textarea {
+        min-height: 96px;
+        resize: vertical;
+        padding: 14px 18px;
+        line-height: 1.5;
+      }
+
+      input:hover,
+      select:hover,
+      textarea:hover {
+        border-color: rgba(43, 178, 188, 0.24);
+        background: rgba(255, 255, 255, 0.96);
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        border-color: rgba(43, 178, 188, 0.48);
+        box-shadow: 0 0 0 5px rgba(43, 178, 188, 0.12), 0 12px 30px rgba(34, 43, 57, 0.06);
+        transform: translateY(-1px);
+      }
+
+      .button {
+        position: relative;
+        display: inline-flex;
+        min-height: 42px;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        overflow: hidden;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        cursor: pointer;
+        padding: 0 18px;
+        white-space: nowrap;
+        font-weight: 690;
+        transition: transform 190ms var(--spring), box-shadow 190ms ease, background 190ms ease, border-color 190ms ease;
+      }
+
+      .button::after {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(105deg, transparent 22%, rgba(255, 255, 255, 0.46) 44%, transparent 62%);
+        content: "";
+        transform: translateX(-140%);
+        transition: transform 520ms ease;
+      }
+
+      .button:hover {
+        transform: translateY(-2px);
+      }
+
+      .button:hover::after {
+        transform: translateX(140%);
+      }
+
+      .button:active {
+        transform: translateY(0) scale(0.985);
+      }
+
+      .button:focus-visible {
+        outline: 0;
+        box-shadow: 0 0 0 5px rgba(43, 178, 188, 0.14), 0 14px 34px rgba(34, 43, 57, 0.1);
+      }
+
+      .button:disabled {
+        cursor: progress;
+        opacity: 0.68;
+      }
+
+      .primary {
+        border-color: rgba(255, 255, 255, 0.12);
+        background:
+          linear-gradient(112deg, rgba(100, 185, 232, 0.15), transparent 38%),
+          linear-gradient(135deg, #0f1115, #2a3038 72%, #414b54);
+        box-shadow: 0 18px 38px rgba(17, 17, 19, 0.2);
+        color: white;
+      }
+
+      .primary:hover {
+        box-shadow: 0 24px 52px rgba(17, 17, 19, 0.24);
+      }
+
+      .secondary {
+        border-color: var(--line);
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--ink);
+        box-shadow: 0 8px 22px rgba(37, 47, 64, 0.06);
+      }
+
+      .secondary:hover {
+        border-color: rgba(43, 178, 188, 0.18);
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: var(--shadow-soft);
+      }
+
+      .icon {
+        position: relative;
+        z-index: 1;
+        display: inline-grid;
+        width: 16px;
+        height: 16px;
+        place-items: center;
+      }
+
+      .icon,
+      svg.icon,
+      .icon svg,
+      .nav-icon svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .button svg {
+        position: relative;
+        z-index: 1;
+        flex: 0 0 auto;
+      }
+
+      .button span,
+      .button i {
+        position: relative;
+        z-index: 1;
+      }
+
+      .action-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      td .button {
+        min-height: 34px;
+        padding: 0 12px;
+        font-size: 13px;
+      }
+
+      .form-submit,
+      .login-card .primary {
+        width: 100%;
+        margin-top: 24px;
+      }
+
+      .shell {
+        display: grid;
+        position: relative;
+        isolation: isolate;
+        min-height: 100vh;
+        grid-template-columns: 272px minmax(0, 1fr);
+        background:
+          linear-gradient(112deg, rgba(65, 154, 219, 0.12), transparent 30%),
+          linear-gradient(42deg, transparent 46%, rgba(55, 184, 131, 0.1) 62%, transparent 76%),
+          linear-gradient(148deg, transparent 52%, rgba(242, 179, 103, 0.13));
+      }
+
+      .shell::before {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        background:
+          linear-gradient(105deg, transparent 0 30%, rgba(255, 255, 255, 0.76) 46%, transparent 62%),
+          linear-gradient(22deg, transparent 0 56%, rgba(226, 111, 92, 0.06) 72%, transparent 88%);
+        content: "";
+        opacity: 0.72;
+        pointer-events: none;
+        animation: panelGlow 16s ease-in-out infinite alternate;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        border-right: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.72);
+        padding: 26px 18px;
+        box-shadow: 18px 0 70px rgba(37, 47, 64, 0.055);
+        backdrop-filter: blur(28px) saturate(180%);
+        -webkit-backdrop-filter: blur(28px) saturate(180%);
+      }
+
+      .sidebar::before {
+        position: absolute;
+        inset: 0 0 auto;
+        height: 3px;
+        background: linear-gradient(90deg, var(--sky), var(--teal), var(--mint), var(--amber), var(--coral));
+        content: "";
+        opacity: 0.58;
+      }
+
+      .nav {
+        display: grid;
+        gap: 9px;
+        margin-top: 30px;
+      }
+
+      .nav button {
+        position: relative;
+        display: flex;
+        min-height: 44px;
+        align-items: center;
+        gap: 10px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--soft);
+        cursor: pointer;
+        padding: 0 13px;
+        text-align: left;
+        transition: color 200ms ease, background 200ms ease, transform 200ms var(--spring), box-shadow 200ms ease;
+      }
+
+      .nav button::before {
+        position: absolute;
+        inset: 10px auto 10px 7px;
+        width: 3px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, var(--sky), var(--mint), var(--amber));
+        content: "";
+        opacity: 0;
+        transform: scaleY(0.45);
+        transition: opacity 200ms ease, transform 200ms var(--spring);
+      }
+
+      .nav button:hover {
+        background: rgba(255, 255, 255, 0.82);
+        color: var(--ink);
+        transform: translateX(4px);
+      }
+
+      .nav button.active {
+        border: 1px solid rgba(255, 255, 255, 0.74);
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.88)),
+          linear-gradient(112deg, rgba(65, 154, 219, 0.1), rgba(80, 192, 151, 0.08));
+        color: var(--ink);
+        box-shadow: 0 16px 34px rgba(34, 43, 57, 0.09);
+      }
+
+      .nav button.active::before {
+        opacity: 1;
+        transform: scaleY(1);
+      }
+
+      .nav-icon {
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border-radius: 999px;
+        background: rgba(16, 17, 20, 0.055);
+        color: var(--soft);
+        transition: background 200ms ease, color 200ms ease, transform 200ms var(--spring);
+      }
+
+      .nav button.active .nav-icon {
+        background: linear-gradient(135deg, rgba(43, 178, 188, 0.15), rgba(242, 179, 103, 0.14));
+        color: var(--ink);
+        transform: scale(1.04);
+      }
+
+      main {
+        position: relative;
+        isolation: isolate;
+        padding: 32px 36px 48px;
+      }
+
+      main::before {
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.56), transparent 34%),
+          linear-gradient(108deg, rgba(65, 154, 219, 0.08), transparent 26%),
+          linear-gradient(35deg, transparent 58%, rgba(242, 179, 103, 0.1));
+        content: "";
+        pointer-events: none;
+      }
+
+      main::after {
+        position: fixed;
+        top: 0;
+        left: 272px;
+        right: 0;
+        z-index: 5;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--sky), var(--teal), var(--mint), var(--amber), transparent);
+        content: "";
+        opacity: 0;
+        transform: scaleX(0.2);
+        transform-origin: left;
+        pointer-events: none;
+      }
+
+      .is-loading main::after {
+        opacity: 0.85;
+        animation: loadingBar 1.2s ease-in-out infinite;
+      }
+
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 30px;
+      }
+
+      .top-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+
+      .app-switch {
+        display: inline-flex;
+        min-height: 42px;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.78);
+        box-shadow: 0 8px 22px rgba(37, 47, 64, 0.06);
+        padding: 0 10px 0 14px;
+      }
+
+      .app-switch select {
+        min-height: 34px;
+        width: min(260px, 42vw);
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        padding: 0 28px 0 0;
+      }
+
+      .app-switch select:focus {
+        box-shadow: none;
+        transform: none;
+      }
+
+      .title {
+        margin: 4px 0 0;
+        font-size: clamp(34px, 4vw, 42px);
+        font-weight: 740;
+        letter-spacing: 0;
+        line-height: 1.06;
+      }
+
+      .eyebrow {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 740;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 17px;
+      }
+
+      .card {
+        overflow: hidden;
+        padding: 22px;
+        box-shadow:
+          0 24px 70px rgba(34, 43, 57, 0.09),
+          inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        animation: rise 500ms var(--spring) both;
+        transition: transform 240ms var(--spring), box-shadow 240ms ease, border-color 240ms ease, background 240ms ease;
+      }
+
+      .card:hover {
+        border-color: rgba(43, 178, 188, 0.18);
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.78)),
+          var(--surface);
+        box-shadow: 0 34px 100px rgba(34, 43, 57, 0.13);
+        transform: translateY(-4px);
+      }
+
+      .metric {
+        min-height: 154px;
+        isolation: isolate;
+      }
+
+      .metric::after {
+        position: absolute;
+        inset: 0 0 auto;
+        height: 8px;
+        background: linear-gradient(90deg, transparent, var(--tone), color-mix(in srgb, var(--tone) 40%, white), transparent);
+        content: "";
+        opacity: 0.78;
+        animation: accentDrift 4s ease-in-out infinite alternate;
+      }
+
+      .metric .metric-value {
+        animation: valuePop 520ms var(--spring) both;
+      }
+
+      .metric p {
+        color: var(--muted);
+      }
+
+      .metric-value {
+        margin-top: 19px;
+        color: var(--ink);
+        font-size: 38px;
+        font-weight: 730;
+        line-height: 1;
+      }
+
+      .metric-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .metric-label::before {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--tone);
+        box-shadow: 0 0 0 5px var(--tone-soft);
+        content: "";
+        animation: softPulse 2.8s ease-in-out infinite;
+      }
+
+      .tone-sky {
+        --tone: var(--sky);
+        --tone-soft: var(--sky-soft);
+      }
+
+      .tone-mint {
+        --tone: var(--mint);
+        --tone-soft: var(--mint-soft);
+      }
+
+      .tone-teal {
+        --tone: var(--teal);
+        --tone-soft: var(--teal-soft);
+      }
+
+      .tone-amber {
+        --tone: var(--amber);
+        --tone-soft: var(--amber-soft);
+      }
+
+      .section {
+        display: none;
+      }
+
+      .section.active {
+        display: block;
+        animation: sectionIn 380ms var(--ease) both;
+      }
+
+      .two {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(340px, 380px);
+        gap: 17px;
+        margin-top: 17px;
+      }
+
+      .table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        border-radius: 18px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        padding: 14px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 720;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      td {
+        color: var(--soft);
+        font-size: 14px;
+      }
+
+      tbody tr {
+        animation: rowIn 420ms var(--ease) both;
+        animation-delay: calc(var(--row, 0) * 36ms);
+        transition: background 180ms ease, transform 180ms var(--spring);
+      }
+
+      tbody tr:hover {
+        background: rgba(255, 255, 255, 0.72);
+        transform: translateX(3px);
+      }
+
+      .strong {
+        color: var(--ink);
+        font-weight: 720;
+      }
+
+      .muted-line {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .mono {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+
+      .link-chip {
+        display: inline-flex;
+        min-height: 28px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--ink);
+        padding: 0 10px;
+        text-decoration: none;
+        transition: border-color 180ms ease, background 180ms ease, transform 180ms var(--spring);
+      }
+
+      .link-chip:hover {
+        border-color: rgba(43, 178, 188, 0.2);
+        background: rgba(255, 255, 255, 0.9);
+        transform: translateY(-1px);
+      }
+
+      .badge {
+        display: inline-flex;
+        min-height: 24px;
+        align-items: center;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        padding: 0 9px;
+        font-size: 12px;
+        font-weight: 690;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+      }
+
+      .success {
+        border-color: rgba(35, 134, 95, 0.14);
+        background: var(--mint-soft);
+        color: var(--mint);
+      }
+
+      .info {
+        border-color: rgba(23, 119, 200, 0.14);
+        background: var(--sky-soft);
+        color: var(--sky);
+      }
+
+      .warning {
+        border-color: rgba(154, 100, 31, 0.14);
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .error {
+        border-color: rgba(178, 70, 82, 0.14);
+        background: var(--rose-soft);
+        color: var(--rose);
+      }
+
+      .callout {
+        margin-top: 14px;
+        border: 1px solid rgba(35, 134, 95, 0.16);
+        border-radius: 20px;
+        background: linear-gradient(135deg, rgba(55, 184, 131, 0.14), rgba(255, 255, 255, 0.82));
+        color: var(--mint);
+        padding: 14px;
+        overflow-wrap: anywhere;
+        animation: rise 420ms var(--spring) both;
+      }
+
+      .error-text {
+        position: relative;
+        z-index: 1;
+        margin-top: 12px;
+        color: var(--rose);
+        font-size: 13px;
+      }
+
+      .empty-state {
+        min-height: 72px;
+        border: 1px dashed rgba(15, 23, 42, 0.14);
+        border-radius: 18px;
+        display: grid;
+        place-items: center;
+        color: var(--muted);
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.5)),
+          linear-gradient(90deg, rgba(65, 154, 219, 0.05), rgba(80, 192, 151, 0.04), rgba(242, 179, 103, 0.05));
+      }
+
+      .code-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .code-box {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.76);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+        transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms var(--spring);
+      }
+
+      .code-box:hover {
+        border-color: rgba(43, 178, 188, 0.16);
+        box-shadow: 0 18px 46px rgba(34, 43, 57, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+        transform: translateY(-2px);
+      }
+
+      .code-head {
+        display: flex;
+        min-height: 44px;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.46);
+        padding: 0 12px 0 16px;
+      }
+
+      .code-head span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 760;
+      }
+
+      pre {
+        margin: 0;
+        overflow: auto;
+        padding: 16px;
+        color: #1e252c;
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 13px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .sdk-steps {
+        display: grid;
+        gap: 10px;
+      }
+
+      .sdk-step {
+        display: grid;
+        grid-template-columns: 32px minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.62);
+        padding: 13px;
+        transition: border-color 180ms ease, background 180ms ease, transform 180ms var(--spring);
+      }
+
+      .sdk-step:hover {
+        border-color: rgba(43, 178, 188, 0.16);
+        background: rgba(255, 255, 255, 0.86);
+        transform: translateX(3px);
+      }
+
+      .step-index {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        border-radius: 999px;
+        background: linear-gradient(135deg, rgba(65, 154, 219, 0.16), rgba(55, 184, 131, 0.14), rgba(242, 179, 103, 0.13));
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 720;
+      }
+
+      .copy-state {
+        min-height: 20px;
+        color: var(--mint);
+        font-size: 13px;
+      }
+
+      .sdk-workbench {
+        display: grid;
+        gap: 17px;
+      }
+
+      .sdk-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .sdk-tabs button {
+        min-height: 38px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.68);
+        color: var(--soft);
+        cursor: pointer;
+        padding: 0 14px;
+        font-weight: 700;
+      }
+
+      .sdk-tabs button.active {
+        border-color: rgba(43, 178, 188, 0.2);
+        background: linear-gradient(135deg, rgba(65, 154, 219, 0.14), rgba(55, 184, 131, 0.12));
+        color: var(--ink);
+      }
+
+      .sdk-tab-panel {
+        display: none;
+      }
+
+      .sdk-tab-panel.active {
+        display: block;
+      }
+
+      .sdk-board {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+        gap: 17px;
+      }
+
+      .sdk-progress {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .sdk-progress-item,
+      .sdk-guide-card,
+      .sdk-evidence,
+      .sdk-param-panel {
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.62);
+        padding: 13px;
+      }
+
+      .sdk-progress-item {
+        min-height: 84px;
+      }
+
+      .sdk-progress-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .sdk-status-dot {
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border-radius: 999px;
+        background: var(--sky-soft);
+        color: var(--sky);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .sdk-status-passed {
+        background: var(--mint-soft);
+        color: var(--mint);
+      }
+
+      .sdk-status-warning,
+      .sdk-status-manual,
+      .sdk-status-current {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .sdk-status-blocked {
+        background: var(--rose-soft);
+        color: var(--rose);
+      }
+
+      .sdk-guide-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .sdk-guide-card h3,
+      .sdk-evidence h3,
+      .sdk-param-panel h3 {
+        margin: 0 0 10px;
+        font-size: 15px;
+      }
+
+      .sdk-param-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .snippet-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin: 0 0 12px;
+      }
+
+      .snippet-tabs button {
+        min-height: 32px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.68);
+        cursor: pointer;
+        padding: 0 10px;
+        color: var(--soft);
+        font-size: 12px;
+        font-weight: 720;
+      }
+
+      .snippet-tabs button.active {
+        background: var(--sky-soft);
+        color: var(--sky);
+      }
+
+      .sdk-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .is-loading #refresh .icon {
+        animation: spin 860ms linear infinite;
+      }
+
+      @keyframes ambientFlow {
+        from {
+          background-position: 0% 20%;
+        }
+        to {
+          background-position: 100% 80%;
+        }
+      }
+
+      @keyframes ribbonDrift {
+        from {
+          translate: -2% 0;
+          opacity: 0.56;
+        }
+        to {
+          translate: 2% 10px;
+          opacity: 0.82;
+        }
+      }
+
+      @keyframes panelGlow {
+        from {
+          background-position: 0% 30%;
+        }
+        to {
+          background-position: 100% 70%;
+        }
+      }
+
+      @keyframes loginRise {
+        from {
+          opacity: 0;
+          filter: blur(8px);
+          translate: 0 20px;
+          scale: 0.985;
+        }
+        to {
+          opacity: 1;
+          filter: blur(0);
+          translate: 0 0;
+          scale: 1;
+        }
+      }
+
+      @keyframes glassSweep {
+        from {
+          transform: translateX(-6%) rotate(-4deg);
+        }
+        to {
+          transform: translateX(8%) rotate(-2deg);
+        }
+      }
+
+      @keyframes markFloat {
+        0%,
+        100% {
+          translate: 0 0;
+        }
+        50% {
+          translate: 0 -2px;
+        }
+      }
+
+      @keyframes slowSpin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes accentPulse {
+        from {
+          opacity: 0.58;
+          transform: scaleX(0.86);
+        }
+        to {
+          opacity: 1;
+          transform: scaleX(1);
+        }
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(14px) scale(0.992);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes sectionIn {
+        from {
+          opacity: 0;
+          transform: translateY(12px) scale(0.996);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes rowIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes accentDrift {
+        from {
+          transform: translateX(-18%);
+        }
+        to {
+          transform: translateX(18%);
+        }
+      }
+
+      @keyframes softPulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 5px var(--tone-soft);
+        }
+        50% {
+          box-shadow: 0 0 0 7px transparent;
+        }
+      }
+
+      @keyframes valuePop {
+        from {
+          opacity: 0;
+          transform: translateY(8px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes loadingBar {
+        0% {
+          transform: translateX(-30%) scaleX(0.18);
+        }
+        48% {
+          transform: translateX(25%) scaleX(0.64);
+        }
+        100% {
+          transform: translateX(105%) scaleX(0.18);
+        }
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+
+      @media (max-width: 1080px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .two {
+          grid-template-columns: 1fr;
+        }
+
+        .sdk-board,
+        .sdk-guide-grid,
+        .sdk-param-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .sdk-progress {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 900px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+
+        main::after {
+          left: 0;
+        }
+
+        .sidebar {
+          position: static;
+          height: auto;
+        }
+
+        .nav {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        main {
+          padding: 22px;
+        }
+
+        .top {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .top-actions {
+          justify-content: flex-start;
+        }
+      }
+
+      @media (max-width: 620px) {
+        .login {
+          padding: 18px;
+        }
+
+        .login-card {
+          padding: 34px 24px;
+          border-radius: 26px;
+        }
+
+        .grid,
+        .sdk-progress,
+        .nav {
+          grid-template-columns: 1fr;
+        }
+
+        .title {
+          font-size: 32px;
+        }
+
+        .card {
+          padding: 18px;
+          border-radius: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section id="login" class="login">
+      <form class="login-card" id="loginForm">
+        <div class="brand">
+          <div class="mark">LG</div>
+          <div>
+            <div class="strong">License Guard</div>
+          </div>
+        </div>
+        <h1>License Guard</h1>
+        <p>应用授权、设备绑定与完整性风控控制台。</p>
+        <div class="field">
+          <label>账号</label>
+          <input id="account" value="admin@example.com" />
+        </div>
+        <div class="field">
+          <label>密码</label>
+          <input id="password" type="password" value="ChangeMe123!" />
+        </div>
+        <button class="button primary" type="submit"><i class="icon" data-lucide="log-in"></i><span>登录</span></button>
+        <div id="loginError" class="error-text"></div>
+      </form>
+    </section>
+
+    <section id="app" class="shell hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="mark">LG</div>
+          <div>
+            <div class="strong">License Guard</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="active" data-section="dashboard"><span class="nav-icon"><i data-lucide="layout-dashboard"></i></span><span>总览</span></button>
+          <button data-section="apps"><span class="nav-icon"><i data-lucide="app-window"></i></span><span>应用</span></button>
+          <button data-section="versions"><span class="nav-icon"><i data-lucide="package-check"></i></span><span>版本</span></button>
+          <button data-section="licenses"><span class="nav-icon"><i data-lucide="key-round"></i></span><span>授权</span></button>
+          <button data-section="devices"><span class="nav-icon"><i data-lucide="monitor-smartphone"></i></span><span>设备</span></button>
+          <button data-section="risks"><span class="nav-icon"><i data-lucide="shield-alert"></i></span><span>风险事件</span></button>
+          <button data-section="sdk"><span class="nav-icon"><i data-lucide="square-terminal"></i></span><span>SDK 接入</span></button>
+          <button data-section="settings"><span class="nav-icon"><i data-lucide="settings"></i></span><span>设置</span></button>
+        </nav>
+      </aside>
+
+      <main>
+        <div class="top">
+          <div>
+            <div class="eyebrow" id="eyebrow">Overview</div>
+            <div class="title" id="title">授权与完整性总览</div>
+          </div>
+          <div class="top-actions">
+            <label class="app-switch"><i class="icon" data-lucide="app-window"></i><select id="appSelector" aria-label="当前应用"></select></label>
+            <button class="button secondary" id="refresh"><i class="icon" data-lucide="refresh-cw"></i><span>刷新</span></button>
+            <button class="button secondary" id="logout"><i class="icon" data-lucide="log-out"></i><span>退出</span></button>
+          </div>
+        </div>
+
+        <section id="section-dashboard" class="section active">
+          <div class="grid" id="metrics"></div>
+          <div class="two">
+            <div class="card">
+              <h2>最近风险事件</h2>
+              <div id="recentRisks"></div>
+            </div>
+            <div class="card">
+              <h2>当前应用接入参数</h2>
+              <div id="selectedAppSummary"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-apps" class="section">
+          <div class="two">
+            <div class="card">
+              <h2>应用列表</h2>
+              <div id="appsTable"></div>
+            </div>
+            <form class="card" id="createAppForm">
+              <h2>新增应用</h2>
+              <div class="field"><label>App Key</label><input name="app_key" value="app_new_windows_prod" /></div>
+              <div class="field"><label>名称</label><input name="name" value="New Windows App" /></div>
+              <div class="field"><label>平台</label><select name="platform"><option>windows</option><option>android</option></select></div>
+              <div class="field"><label>版本</label><input name="version" value="1.0.0" /></div>
+              <button class="button primary form-submit" type="submit"><i class="icon" data-lucide="plus"></i><span>创建应用</span></button>
+            </form>
+          </div>
+        </section>
+
+        <section id="section-versions" class="section">
+          <div class="two">
+            <div class="card">
+              <h2>版本列表</h2>
+              <div id="releasesTable"></div>
+            </div>
+            <form class="card" id="createReleaseForm">
+              <h2>发布版本</h2>
+              <div class="field"><label>App ID</label><input name="app_id" value="app_nax_desktop_prod" /></div>
+              <div class="field"><label>平台</label><select name="platform"><option>windows</option><option>android</option></select></div>
+              <div class="field"><label>版本</label><input name="version" value="1.5.0" /></div>
+              <div class="field"><label>Build Number</label><input name="build_number" value="10500" /></div>
+              <div class="field"><label>状态</label><select name="status"><option>active</option><option>deprecated</option><option>blocked</option></select></div>
+              <div class="field"><label>强制更新</label><select name="mandatory"><option value="false">否</option><option value="true">是</option></select></div>
+              <div class="field"><label>灰度比例</label><input name="rollout_percent" value="100" /></div>
+              <div class="field"><label>最低支持版本</label><input name="min_supported_version" value="1.4.2" /></div>
+              <div class="field"><label>主程序 Hash</label><input name="main_binary_hash" value="demo-main-binary-sha256-v150" /></div>
+              <div class="field"><label>签名指纹</label><input name="signer_thumbprint" value="demo-signer-thumbprint" /></div>
+              <div class="field"><label>下载地址</label><input name="download_url" value="https://download.example.com/nax-desktop/1.5.0/setup.exe" /></div>
+              <div class="field"><label>安装包 SHA256</label><input name="package_sha256" value="demo-package-v150-sha256" /></div>
+              <div class="field"><label>发布说明</label><textarea name="release_notes">Windows Go demo update package.</textarea></div>
+              <button class="button primary form-submit" type="submit"><i class="icon" data-lucide="send"></i><span>发布</span></button>
+            </form>
+          </div>
+        </section>
+
+        <section id="section-licenses" class="section">
+          <div class="two">
+            <div class="card">
+              <h2>授权列表</h2>
+              <div id="licensesTable"></div>
+            </div>
+            <form class="card" id="createLicenseForm">
+              <h2>签发授权</h2>
+              <div class="field"><label>App ID</label><input name="app_id" value="app_nax_desktop_prod" /></div>
+              <div class="field"><label>客户标识</label><input name="owner_ref" value="customer-demo" /></div>
+              <div class="field"><label>设备数</label><input name="max_devices" value="3" /></div>
+              <div class="field"><label>到期日期</label><input name="expires_at" value="2027-06-07" /></div>
+              <button class="button primary form-submit" type="submit"><i class="icon" data-lucide="badge-check"></i><span>签发</span></button>
+              <div id="newLicenseKey"></div>
+            </form>
+          </div>
+        </section>
+
+        <section id="section-devices" class="section">
+          <div class="card">
+            <h2>设备列表</h2>
+            <div id="devicesTable"></div>
+          </div>
+        </section>
+
+        <section id="section-risks" class="section">
+          <div class="card">
+            <h2>风险事件</h2>
+            <div id="risksTable"></div>
+          </div>
+        </section>
+
+        <section id="section-sdk" class="section">
+          <div class="card sdk-workbench">
+            <div>
+              <h2>SDK 接入工作台</h2>
+              <div id="sdkKeyPanel"></div>
+              <div id="sdkSecretState"></div>
+            </div>
+            <div class="sdk-tabs" role="tablist" aria-label="SDK 接入工作台">
+              <button class="active" data-sdk-tab="overview" type="button">接入总览</button>
+              <button data-sdk-tab="guide" type="button">App 改造指南</button>
+              <button data-sdk-tab="generate" type="button">自动生成</button>
+              <button data-sdk-tab="verify" type="button">联调验证</button>
+            </div>
+            <div id="sdkPanelOverview" class="sdk-tab-panel active"></div>
+            <div id="sdkPanelGuide" class="sdk-tab-panel"></div>
+            <div id="sdkPanelGenerate" class="sdk-tab-panel"></div>
+            <div id="sdkPanelVerify" class="sdk-tab-panel"></div>
+            <div id="copyState" class="copy-state"></div>
+          </div>
+        </section>
+
+        <section id="section-settings" class="section">
+          <div class="two">
+            <form class="card" id="settingsForm">
+              <h2>默认策略</h2>
+              <div class="field"><label>默认设备数</label><input name="default_max_devices" type="number" min="1" max="1000" value="3" /></div>
+              <div class="field"><label>默认授权天数</label><input name="default_license_days" type="number" min="1" max="3650" value="365" /></div>
+              <div class="field"><label>Token TTL 分钟</label><input name="default_token_ttl_minutes" type="number" min="5" max="43200" value="720" /></div>
+              <div class="field"><label>中风险 TTL 分钟</label><input name="medium_risk_token_ttl_minutes" type="number" min="5" max="43200" value="30" /></div>
+              <div class="field"><label>离线宽限天数</label><input name="offline_grace_days" type="number" min="0" max="30" value="7" /></div>
+              <div class="field"><label>审计保留天数</label><input name="audit_log_retention_days" type="number" min="7" max="3650" value="365" /></div>
+              <div class="field"><label>MFA</label><select name="mfa_required"><option value="false">关闭</option><option value="true">启用</option></select></div>
+              <div class="field"><label>敏感操作确认</label><select name="sensitive_action_confirm"><option value="false">关闭</option><option value="true">启用</option></select></div>
+              <button class="button primary form-submit" type="submit"><i class="icon" data-lucide="save"></i><span>保存设置</span></button>
+              <div id="settingsState"></div>
+            </form>
+            <div class="card">
+              <h2>当前设置</h2>
+              <div id="settingsSummary"></div>
+              <form id="passwordForm">
+                <h2 style="margin-top: 24px">修改管理员密码</h2>
+                <div class="field"><label>当前密码</label><input name="current_password" type="password" autocomplete="current-password" /></div>
+                <div class="field"><label>新密码</label><input name="new_password" type="password" autocomplete="new-password" minlength="8" /></div>
+                <div class="field"><label>确认新密码</label><input name="confirm_password" type="password" autocomplete="new-password" minlength="8" /></div>
+                <button class="button primary form-submit" type="submit"><i class="icon" data-lucide="lock-keyhole"></i><span>更新密码</span></button>
+                <div id="passwordState"></div>
+              </form>
+            </div>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script>
+      const DEMO_APP_ID = "app_nax_desktop_prod";
+      const DEMO_LICENSE = "LG-DEMO-2026-WINDOWS";
+      const state = {
+        token: localStorage.getItem("lg_admin_token") || "",
+        apps: [],
+        selectedAppID: localStorage.getItem("lg_selected_app_id") || DEMO_APP_ID,
+        selectedApp: null,
+        settings: null,
+        sdkSecret: "",
+        sdkTab: localStorage.getItem("lg_sdk_tab") || "overview",
+        sdkSnippet: localStorage.getItem("lg_sdk_snippet") || "env",
+        sdkContext: null,
+      };
+      const sdkTabs = {
+        overview: "sdkPanelOverview",
+        guide: "sdkPanelGuide",
+        generate: "sdkPanelGenerate",
+        verify: "sdkPanelVerify",
+      };
+      const titles = {
+        dashboard: ["Overview", "授权与完整性总览"],
+        apps: ["Applications", "应用管理"],
+        versions: ["Releases", "版本与更新"],
+        licenses: ["Licenses", "授权管理"],
+        devices: ["Devices", "设备管理"],
+        risks: ["Risk Events", "风险事件"],
+        sdk: ["SDK", "Windows Go 接入"],
+        settings: ["Settings", "系统设置"],
+      };
+
+      async function api(path, options = {}) {
+        const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+        if (state.token) headers.Authorization = `Bearer ${state.token}`;
+        const res = await fetch(path, { ...options, headers });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error?.message || res.statusText);
+        return data;
+      }
+
+      function showApp() {
+        document.getElementById("login").classList.add("hidden");
+        document.getElementById("app").classList.remove("hidden");
+      }
+
+      function showLogin() {
+        document.getElementById("app").classList.add("hidden");
+        document.getElementById("login").classList.remove("hidden");
+      }
+
+      document.getElementById("loginForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        document.getElementById("loginError").textContent = "";
+        try {
+          const data = await api("/admin/login", {
+            method: "POST",
+            body: JSON.stringify({
+              account: document.getElementById("account").value,
+              password: document.getElementById("password").value,
+            }),
+          });
+          state.token = data.admin_token;
+          localStorage.setItem("lg_admin_token", state.token);
+          showApp();
+          await loadAll();
+          restoreSectionFromHash();
+        } catch (error) {
+          document.getElementById("loginError").textContent = error.message;
+        }
+      });
+
+      document.getElementById("logout").addEventListener("click", async () => {
+        try {
+          await api("/admin/logout", { method: "POST", body: "{}" });
+        } finally {
+          state.token = "";
+          localStorage.removeItem("lg_admin_token");
+          showLogin();
+        }
+      });
+
+      document.getElementById("refresh").addEventListener("click", loadAll);
+      document.getElementById("appSelector").addEventListener("change", async (event) => {
+        state.selectedAppID = event.target.value || DEMO_APP_ID;
+        state.sdkSecret = "";
+        localStorage.setItem("lg_selected_app_id", state.selectedAppID);
+        syncAppFields();
+        await loadAll();
+      });
+
+      const loginCard = document.querySelector(".login-card");
+      if (loginCard && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        loginCard.addEventListener("pointermove", (event) => {
+          const rect = loginCard.getBoundingClientRect();
+          const x = (event.clientX - rect.left) / rect.width - 0.5;
+          const y = (event.clientY - rect.top) / rect.height - 0.5;
+          loginCard.style.setProperty("--tilt-x", `${(x * 5).toFixed(2)}deg`);
+          loginCard.style.setProperty("--tilt-y", `${(-y * 5).toFixed(2)}deg`);
+        });
+        loginCard.addEventListener("pointerleave", () => {
+          loginCard.style.setProperty("--tilt-x", "0deg");
+          loginCard.style.setProperty("--tilt-y", "0deg");
+        });
+      }
+
+      document.querySelectorAll(".nav button").forEach((button) => {
+        button.addEventListener("click", () => {
+          setSection(button.dataset.section);
+        });
+      });
+
+      document.querySelectorAll("[data-sdk-tab]").forEach((button) => {
+        button.addEventListener("click", () => {
+          setSDKTab(button.dataset.sdkTab);
+        });
+      });
+
+      document.addEventListener("input", (event) => {
+        const input = event.target.closest("[data-sdk-param]");
+        if (!input || !state.sdkContext) return;
+        state.sdkContext.params[input.dataset.sdkParam] = input.value;
+        renderGeneratedOutputs();
+        renderSDKVerify(state.sdkContext);
+        refreshIcons();
+      });
+
+      function setSection(section, updateHash = true) {
+        if (!titles[section]) section = "dashboard";
+        document.querySelectorAll(".nav button").forEach((node) => node.classList.toggle("active", node.dataset.section === section));
+        document.querySelectorAll(".section").forEach((node) => node.classList.remove("active"));
+        document.getElementById(`section-${section}`).classList.add("active");
+        document.getElementById("eyebrow").textContent = titles[section][0];
+        document.getElementById("title").textContent = titles[section][1];
+        if (updateHash) {
+          history.replaceState(null, "", `#${section}`);
+        }
+      }
+
+      function restoreSectionFromHash() {
+        const section = window.location.hash.replace("#", "");
+        if (section) setSection(section, false);
+      }
+
+      function setSDKTab(tab) {
+        if (!sdkTabs[tab]) tab = "overview";
+        state.sdkTab = tab;
+        localStorage.setItem("lg_sdk_tab", tab);
+        document.querySelectorAll("[data-sdk-tab]").forEach((node) => node.classList.toggle("active", node.dataset.sdkTab === tab));
+        Object.entries(sdkTabs).forEach(([key, panelID]) => {
+          document.getElementById(panelID).classList.toggle("active", key === tab);
+        });
+      }
+
+      document.getElementById("createLicenseForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const data = await api("/admin/licenses", {
+          method: "POST",
+          body: JSON.stringify({
+            app_id: form.get("app_id"),
+            owner_ref: form.get("owner_ref"),
+            max_devices: Number(form.get("max_devices")),
+            expires_at: form.get("expires_at"),
+          }),
+        });
+        document.getElementById("newLicenseKey").innerHTML = `<div class="callout"><div class="strong">新授权码，只显示一次</div>${data.license_key}</div>`;
+        await loadAll();
+      });
+
+      document.getElementById("createAppForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const appKey = String(form.get("app_key") || "");
+        await api("/admin/apps", {
+          method: "POST",
+          body: JSON.stringify({
+            app_key: appKey,
+            name: form.get("name"),
+            platform: form.get("platform"),
+            version: form.get("version"),
+          }),
+        });
+        state.selectedAppID = appKey || state.selectedAppID;
+        localStorage.setItem("lg_selected_app_id", state.selectedAppID);
+        await loadAll();
+      });
+
+      document.getElementById("createReleaseForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const appID = String(form.get("app_id") || "");
+        await api(`/admin/apps/${encodeURIComponent(appID)}/releases`, {
+          method: "POST",
+          body: JSON.stringify({
+            platform: form.get("platform"),
+            version: form.get("version"),
+            build_number: Number(form.get("build_number")),
+            status: form.get("status"),
+            mandatory: form.get("mandatory") === "true",
+            main_binary_hash: form.get("main_binary_hash"),
+            signer_thumbprint: form.get("signer_thumbprint"),
+            rollout_percent: Number(form.get("rollout_percent")),
+            min_supported_version: form.get("min_supported_version"),
+            download_url: form.get("download_url"),
+            package_sha256: form.get("package_sha256"),
+            release_notes: form.get("release_notes"),
+          }),
+        });
+        await loadAll();
+      });
+
+      document.getElementById("settingsForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const data = await api("/admin/settings", {
+          method: "PATCH",
+          body: JSON.stringify({
+            default_max_devices: Number(form.get("default_max_devices")),
+            default_license_days: Number(form.get("default_license_days")),
+            default_token_ttl_minutes: Number(form.get("default_token_ttl_minutes")),
+            medium_risk_token_ttl_minutes: Number(form.get("medium_risk_token_ttl_minutes")),
+            offline_grace_days: Number(form.get("offline_grace_days")),
+            audit_log_retention_days: Number(form.get("audit_log_retention_days")),
+            mfa_required: form.get("mfa_required") === "true",
+            sensitive_action_confirm: form.get("sensitive_action_confirm") === "true",
+          }),
+        });
+        state.settings = data.settings || null;
+        renderSettings(state.settings);
+        document.getElementById("settingsState").innerHTML = `<div class="callout">设置已保存</div>`;
+        await loadAll();
+      });
+
+      document.getElementById("passwordForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const formNode = event.currentTarget;
+        const form = new FormData(formNode);
+        const currentPassword = String(form.get("current_password") || "");
+        const newPassword = String(form.get("new_password") || "");
+        const confirmPassword = String(form.get("confirm_password") || "");
+        const stateNode = document.getElementById("passwordState");
+        stateNode.innerHTML = "";
+        if (newPassword.length < 8) {
+          stateNode.innerHTML = `<div class="error-text">新密码至少需要 8 个字符</div>`;
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          stateNode.innerHTML = `<div class="error-text">两次输入的新密码不一致</div>`;
+          return;
+        }
+        try {
+          await api("/admin/me/password", {
+            method: "POST",
+            body: JSON.stringify({
+              current_password: currentPassword,
+              new_password: newPassword,
+            }),
+          });
+          formNode.reset();
+          stateNode.innerHTML = `<div class="callout">密码已更新，其他登录会话已失效。</div>`;
+        } catch (error) {
+          stateNode.innerHTML = `<div class="error-text">${escapeHTML(error.message)}</div>`;
+        }
+      });
+
+      document.addEventListener("click", async (event) => {
+        const snippetButton = event.target.closest("[data-sdk-snippet]");
+        if (snippetButton) {
+          state.sdkSnippet = snippetButton.dataset.sdkSnippet || "env";
+          localStorage.setItem("lg_sdk_snippet", state.sdkSnippet);
+          renderGeneratedOutputs();
+          return;
+        }
+
+        const actionButton = event.target.closest("[data-action]");
+        if (!actionButton) return;
+        const action = actionButton.dataset.action;
+        const id = actionButton.dataset.id;
+        if (!id) return;
+        if (action === "select-app") {
+          state.selectedAppID = id;
+          state.sdkSecret = "";
+          localStorage.setItem("lg_selected_app_id", state.selectedAppID);
+          syncAppFields();
+          await loadAll();
+        }
+        if (action === "revoke-license" || action === "suspend-license" || action === "resume-license") {
+          const verb = action === "revoke-license" ? "revoke" : action === "suspend-license" ? "suspend" : "resume";
+          await api(`/admin/licenses/${encodeURIComponent(id)}/${verb}`, { method: "POST", body: "{}" });
+          await loadAll();
+        }
+        if (action.startsWith("release-")) {
+          const appID = actionButton.dataset.appId;
+          if (!appID) return;
+          const body = {};
+          if (action === "release-active") body.status = "active";
+          if (action === "release-deprecated") body.status = "deprecated";
+          if (action === "release-blocked") body.status = "blocked";
+          if (action === "release-mandatory") body.mandatory = true;
+          if (action === "release-optional") body.mandatory = false;
+          await api(`/admin/apps/${encodeURIComponent(appID)}/releases/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
+          await loadAll();
+        }
+        if (action === "block-device" || action === "unblock-device" || action === "unbind-device") {
+          const verb = action === "block-device" ? "block" : action === "unblock-device" ? "unblock" : "unbind";
+          await api(`/admin/devices/${encodeURIComponent(id)}/${verb}`, { method: "POST", body: "{}" });
+          await loadAll();
+        }
+        if (action === "resolve-risk") {
+          await api(`/admin/risk-events/${encodeURIComponent(id)}/resolve`, { method: "POST", body: "{}" });
+          await loadAll();
+        }
+        if (action === "rotate-sdk-key") {
+          const data = await api(`/admin/apps/${encodeURIComponent(id)}/sdk-keys/rotate`, { method: "POST", body: "{}" });
+          state.sdkSecret = data.sdk_secret || "";
+          await loadAll();
+          setSection("sdk");
+        }
+        if (action === "sdk-manual-step") {
+          toggleManualSDKStep(id);
+          renderSDKOverview(state.sdkContext);
+          refreshIcons();
+        }
+        if (action === "download-bundle") {
+          await downloadIntegrationBundle(id);
+        }
+      });
+
+      async function loadAll() {
+        const shell = document.getElementById("app");
+        const refresh = document.getElementById("refresh");
+        shell.classList.add("is-loading");
+        refresh.disabled = true;
+        try {
+          const [dashboard, apps, licenses, devices, risks, settings] = await Promise.all([
+            api("/admin/dashboard"),
+            api("/admin/apps"),
+            api("/admin/licenses"),
+            api("/admin/devices"),
+            api("/admin/risk-events"),
+            api("/admin/settings"),
+          ]);
+          state.settings = settings.settings || null;
+          syncSelectedApp(apps.items || []);
+          const appDetail = state.selectedAppID ? await api(`/admin/apps/${encodeURIComponent(state.selectedAppID)}`) : { app: null, releases: [], licenses: [] };
+          renderDashboard(dashboard, appDetail);
+          renderApps(state.apps);
+          renderReleases(appDetail.releases || []);
+          renderLicenses(licenses.items || []);
+          renderDevices(devices.items || []);
+          renderRisks(risks.items || []);
+          renderSettings(state.settings);
+          await renderSDK(appDetail);
+          refreshIcons();
+        } finally {
+          shell.classList.remove("is-loading");
+          refresh.disabled = false;
+        }
+      }
+
+      function syncSelectedApp(apps) {
+        state.apps = apps;
+        if (!state.apps.length) {
+          state.selectedApp = null;
+          state.selectedAppID = "";
+          renderAppSelector();
+          syncAppFields();
+          return;
+        }
+        let selected = state.apps.find((item) => item.app_key === state.selectedAppID);
+        if (!selected) {
+          selected = state.apps[0];
+          state.selectedAppID = selected.app_key;
+          localStorage.setItem("lg_selected_app_id", state.selectedAppID);
+        }
+        state.selectedApp = selected;
+        renderAppSelector();
+        syncAppFields();
+      }
+
+      function renderAppSelector() {
+        const selector = document.getElementById("appSelector");
+        selector.innerHTML = state.apps.map((item) => `<option value="${escapeHTML(item.app_key)}">${escapeHTML(item.name)} · ${escapeHTML(item.app_key)}</option>`).join("");
+        selector.value = state.selectedAppID;
+        selector.disabled = state.apps.length === 0;
+      }
+
+      function syncAppFields() {
+        document.querySelectorAll('[name="app_id"]').forEach((node) => {
+          node.value = state.selectedAppID || DEMO_APP_ID;
+        });
+      }
+
+      function renderSettings(settings) {
+        if (!settings) return;
+        const form = document.getElementById("settingsForm");
+        if (form) {
+          setFormValue(form, "default_max_devices", settings.default_max_devices);
+          setFormValue(form, "default_license_days", settings.default_license_days);
+          setFormValue(form, "default_token_ttl_minutes", settings.default_token_ttl_minutes);
+          setFormValue(form, "medium_risk_token_ttl_minutes", settings.medium_risk_token_ttl_minutes);
+          setFormValue(form, "offline_grace_days", settings.offline_grace_days);
+          setFormValue(form, "audit_log_retention_days", settings.audit_log_retention_days);
+          setFormValue(form, "mfa_required", Boolean(settings.mfa_required));
+          setFormValue(form, "sensitive_action_confirm", Boolean(settings.sensitive_action_confirm));
+        }
+
+        const licenseForm = document.getElementById("createLicenseForm");
+        if (licenseForm) {
+          setFormValue(licenseForm, "max_devices", settings.default_max_devices);
+          const expiresAt = new Date(Date.now() + Number(settings.default_license_days || 365) * 24 * 60 * 60 * 1000);
+          setFormValue(licenseForm, "expires_at", expiresAt.toISOString().slice(0, 10));
+        }
+
+        const rows = [
+          ["默认设备数", settings.default_max_devices],
+          ["默认授权天数", settings.default_license_days],
+          ["Token TTL", `${settings.default_token_ttl_minutes} 分钟`],
+          ["中风险 TTL", `${settings.medium_risk_token_ttl_minutes} 分钟`],
+          ["离线宽限", `${settings.offline_grace_days} 天`],
+          ["审计保留", `${settings.audit_log_retention_days} 天`],
+          ["MFA", settings.mfa_required ? "启用" : "关闭"],
+          ["敏感操作确认", settings.sensitive_action_confirm ? "启用" : "关闭"],
+          ["更新时间", formatDateTime(settings.updated_at)],
+        ];
+        document.getElementById("settingsSummary").innerHTML = rows.map(([label, value]) => `<p><span class="strong">${escapeHTML(label)}:</span> ${escapeHTML(value)}</p>`).join("");
+      }
+
+      function setFormValue(form, name, value) {
+        const node = form.elements[name];
+        if (!node) return;
+        node.value = String(value ?? "");
+      }
+
+      function renderDashboard(data, appDetail) {
+        const metrics = [
+          ["接入应用", data.app_count, "多应用", "sky"],
+          ["活跃授权", data.active_license_count, "可用", "mint"],
+          ["今日验证", data.today_verify_count, "请求", "teal"],
+          ["高风险设备", data.high_risk_devices, "需处理", "amber"],
+        ];
+        document.getElementById("metrics").innerHTML = metrics
+          .map((item) => `<div class="card metric tone-${item[3]}"><p class="metric-label">${item[0]}</p><div class="metric-value" data-count="${Number(item[1]) || 0}">0</div><p>${item[2]}</p></div>`)
+          .join("");
+        animateNumbers();
+        renderRisks(data.recent_risk_events || [], "recentRisks");
+        renderSelectedAppSummary(appDetail);
+      }
+
+      function renderSelectedAppSummary(appDetail) {
+        const app = appDetail.app || state.selectedApp || {};
+        const releases = appDetail.releases || [];
+        const latest = latestRelease(releases);
+        const licenseText = app.app_key === DEMO_APP_ID ? DEMO_LICENSE : "在授权页签发";
+        document.getElementById("selectedAppSummary").innerHTML = [
+          `<p><span class="strong">App ID:</span> ${escapeHTML(app.app_key || state.selectedAppID || "")}</p>`,
+          `<p><span class="strong">License:</span> ${escapeHTML(licenseText)}</p>`,
+          `<p><span class="strong">Version:</span> ${escapeHTML(latest?.version || "")}</p>`,
+          `<p><span class="strong">Integrity hash:</span> ${escapeHTML(latest?.main_binary_hash || "未配置")}</p>`,
+        ].join("");
+      }
+
+      function latestRelease(releases) {
+        return [...releases].sort((left, right) => {
+          const leftBuild = Number(left.build_number || 0);
+          const rightBuild = Number(right.build_number || 0);
+          if (leftBuild !== rightBuild) return rightBuild - leftBuild;
+          return new Date(right.created_at || 0) - new Date(left.created_at || 0);
+        })[0];
+      }
+
+      function animateNumbers() {
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        document.querySelectorAll("[data-count]").forEach((node) => {
+          const target = Number(node.dataset.count || 0);
+          if (!Number.isFinite(target) || reducedMotion) {
+            node.textContent = Number.isFinite(target) ? target.toLocaleString() : "0";
+            return;
+          }
+          const start = performance.now();
+          const duration = 760;
+          const draw = (now) => {
+            const progress = Math.min(1, (now - start) / duration);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            node.textContent = Math.round(target * eased).toLocaleString();
+            if (progress < 1) requestAnimationFrame(draw);
+          };
+          requestAnimationFrame(draw);
+        });
+      }
+
+      function refreshIcons() {
+        if (!window.lucide) return;
+        try {
+          window.lucide.createIcons({ attrs: { "stroke-width": 1.75 } });
+        } catch {
+          // Icons are cosmetic; the console must remain usable if the CDN is unavailable.
+        }
+      }
+
+      window.addEventListener("load", refreshIcons);
+
+      function renderApps(items) {
+        renderTable(
+          "appsTable",
+          ["应用", "App Key", "状态", "操作"],
+          items.map((item) => [
+            strong(item.name),
+            item.app_key,
+            badge(item.status, item.status === "active" ? "success" : "warning"),
+            item.app_key === state.selectedAppID ? badge("当前", "info") : actionButton("选择", "select-app", item.app_key),
+          ]),
+        );
+      }
+
+      function renderReleases(items) {
+        renderTable(
+          "releasesTable",
+          ["版本", "状态", "更新策略", "下载包", "完整性", "操作"],
+          items.map((item) => [
+            releaseTitle(item),
+            badge(item.status, item.status === "blocked" ? "error" : item.status === "deprecated" ? "warning" : "success"),
+            releaseStrategy(item),
+            releasePackage(item),
+            releaseIntegrity(item),
+            releaseActions(item),
+          ]),
+        );
+      }
+
+      function releaseTitle(item) {
+        return `${strong(item.version)}<div class="muted-line">${escapeHTML(item.platform || "")} · build ${escapeHTML(item.build_number || 0)}</div>`;
+      }
+
+      function releaseStrategy(item) {
+        const required = item.mandatory ? badge("强制", "error") : badge("推荐", "info");
+        const rollout = badge(`${Number(item.rollout_percent ?? 100)}%`, "warning");
+        const min = item.min_supported_version ? `<div class="muted-line">最低支持 ${escapeHTML(item.min_supported_version)}</div>` : "";
+        return `${required} ${rollout}${min}`;
+      }
+
+      function releasePackage(item) {
+        const link = item.download_url ? `<a class="link-chip" href="${escapeHTML(item.download_url)}" target="_blank" rel="noreferrer">下载</a>` : `<span class="muted-line">未配置下载地址</span>`;
+        const sha = item.package_sha256 ? `<div class="muted-line mono">${escapeHTML(item.package_sha256)}</div>` : "";
+        return `${link}${sha}`;
+      }
+
+      function releaseIntegrity(item) {
+        const binary = item.main_binary_hash ? `<div class="mono">${escapeHTML(item.main_binary_hash)}</div>` : `<div class="muted-line">未配置主程序 hash</div>`;
+        const signer = item.signer_thumbprint ? `<div class="muted-line mono">${escapeHTML(item.signer_thumbprint)}</div>` : "";
+        return `${binary}${signer}`;
+      }
+
+      function releaseActions(item) {
+        const actions = [];
+        if (item.status !== "active") actions.push(actionButton("启用", "release-active", item.id, item.app_id));
+        if (item.status !== "deprecated") actions.push(actionButton("过时", "release-deprecated", item.id, item.app_id));
+        if (item.status !== "blocked") actions.push(actionButton("阻止", "release-blocked", item.id, item.app_id));
+        actions.push(item.mandatory ? actionButton("推荐", "release-optional", item.id, item.app_id) : actionButton("强制", "release-mandatory", item.id, item.app_id));
+        return `<span class="action-group">${actions.join("")}</span>`;
+      }
+
+      function renderLicenses(items) {
+        renderTable(
+          "licensesTable",
+          ["授权", "应用", "设备数", "到期", "状态", "操作"],
+          items.map((item) => [
+            strong(item.license_key_prefix + "..."),
+            item.app_id,
+            item.max_devices,
+            formatDate(item.expires_at),
+            badge(item.status, item.status === "active" ? "success" : item.status === "revoked" ? "error" : "warning"),
+            licenseActions(item),
+          ]),
+        );
+      }
+
+      function licenseActions(item) {
+        if (item.status === "active") {
+          return `<span class="action-group">${actionButton("暂停", "suspend-license", item.id)}${actionButton("吊销", "revoke-license", item.id)}</span>`;
+        }
+        if (item.status === "suspended") {
+          return `<span class="action-group">${actionButton("恢复", "resume-license", item.id)}${actionButton("吊销", "revoke-license", item.id)}</span>`;
+        }
+        return "";
+      }
+
+      function renderDevices(items) {
+        renderTable(
+          "devicesTable",
+          ["设备", "平台", "风险分", "状态", "最后在线", "操作"],
+          items.map((item) => [
+            strong(item.id),
+            item.platform,
+            item.risk_score,
+            badge(item.status, item.status === "active" ? "success" : "error"),
+            formatDateTime(item.last_seen_at),
+            item.status === "active" ? `${actionButton("解绑", "unbind-device", item.id)} ${actionButton("封禁", "block-device", item.id)}` : actionButton("解封", "unblock-device", item.id),
+          ]),
+        );
+      }
+
+      function renderRisks(items, target = "risksTable") {
+        const fullTable = target === "risksTable";
+        renderTable(
+          target,
+          fullTable ? ["事件", "等级", "动作", "状态", "摘要", "时间", "操作"] : ["事件", "等级", "状态", "时间"],
+          items.map((item) =>
+            fullTable
+              ? [strong(item.event_type), badge(item.severity, riskSeverityKind(item.severity)), item.action, riskStatus(item), item.summary, formatDateTime(item.created_at), riskActions(item)]
+              : [strong(item.event_type), badge(item.severity, riskSeverityKind(item.severity)), riskStatus(item), formatDateTime(item.created_at)],
+          ),
+        );
+      }
+
+      function riskSeverityKind(severity) {
+        return severity === "high" || severity === "critical" ? "error" : severity === "medium" ? "warning" : "info";
+      }
+
+      function riskStatus(item) {
+        return item.resolved_at ? `${badge("已处理", "success")}<div class="muted-line">${formatDateTime(item.resolved_at)}</div>` : badge("待处理", "warning");
+      }
+
+      function riskActions(item) {
+        return item.resolved_at ? "" : actionButton("处理", "resolve-risk", item.id);
+      }
+
+      function renderTable(id, headers, rows) {
+        if (!rows.length) {
+          document.getElementById(id).innerHTML = `<div class="empty-state">暂无数据</div>`;
+          return;
+        }
+        document.getElementById(id).innerHTML = `<div class="table-wrap"><table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows
+          .map((row, index) => `<tr style="--row: ${Math.min(index, 8)}">${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`)
+          .join("")}</tbody></table></div>`;
+      }
+
+      function strong(value) {
+        return `<span class="strong">${escapeHTML(value)}</span>`;
+      }
+
+      function badge(value, kind) {
+        return `<span class="badge ${kind}">${escapeHTML(value || "")}</span>`;
+      }
+
+      function actionButton(label, action, id, appID = "") {
+        const icons = {
+          "unblock-device": "lock-keyhole-open",
+          "block-device": "ban",
+          "unbind-device": "unlink",
+          "suspend-license": "pause",
+          "resume-license": "play",
+          "revoke-license": "shield-x",
+          "release-active": "check-circle-2",
+          "release-deprecated": "archive",
+          "release-blocked": "octagon-x",
+          "release-mandatory": "badge-alert",
+          "release-optional": "bell",
+          "resolve-risk": "check-check",
+          "rotate-sdk-key": "rotate-cw",
+          "sdk-manual-step": "check-square",
+          "download-bundle": "download",
+        };
+        const icon = icons[action] || "circle";
+        const appAttr = appID ? ` data-app-id="${escapeHTML(appID)}"` : "";
+        return `<button class="button secondary" data-action="${escapeHTML(action)}" data-id="${escapeHTML(id)}"${appAttr}><i class="icon" data-lucide="${icon}"></i><span>${escapeHTML(label)}</span></button>`;
+      }
+
+      async function renderSDK(appDetail = {}) {
+        const endpoint = `${window.location.origin}/v1`;
+        const app = appDetail.app || state.selectedApp || {};
+        const releases = appDetail.releases || [];
+        const sdkKey = activeSDKKey(appDetail.sdk_keys || []);
+        const latest = latestRelease(releases) || {};
+        const appID = app.app_key || state.selectedAppID || DEMO_APP_ID;
+        let onboarding = null;
+        try {
+          onboarding = await api(`/admin/apps/${encodeURIComponent(appID)}/onboarding`);
+        } catch {
+          onboarding = deriveOnboarding(appDetail, appID);
+        }
+        const publicKey = await loadPublicKey();
+        const params = {
+          endpoint,
+          app_id: appID,
+          license_key: appID === DEMO_APP_ID ? DEMO_LICENSE : "",
+          app_version: onboarding.latest_release?.version || latest.version || "1.0.0",
+          public_key: publicKey,
+          binary_hash: onboarding.latest_release?.main_binary_hash || latest.main_binary_hash || "",
+          signer_thumbprint: onboarding.latest_release?.signer_thumbprint || latest.signer_thumbprint || "",
+          install_id_path: "/tmp/license-guard-demo/install_id",
+          token_cache_path: "/tmp/license-guard-demo/token.json",
+        };
+        state.sdkContext = { app, appID, sdkKey, keys: appDetail.sdk_keys || [], releases, onboarding, params };
+        setSDKTab(state.sdkTab);
+        renderSDKKeyPanel(appID, sdkKey, appDetail.sdk_keys || []);
+        renderSDKOverview(state.sdkContext);
+        renderSDKGuide(state.sdkContext);
+        renderSDKGenerate(state.sdkContext);
+        renderSDKVerify(state.sdkContext);
+      }
+
+      async function loadPublicKey() {
+        try {
+          const key = await api("/v1/public-key");
+          return key.public_key || "";
+        } catch (error) {
+          return `加载失败: ${error.message}`;
+        }
+      }
+
+      function deriveOnboarding(appDetail, appID) {
+        const releases = appDetail.releases || [];
+        const licenses = appDetail.licenses || [];
+        const keys = appDetail.sdk_keys || [];
+        const latest = latestRelease(releases);
+        const activeKey = activeSDKKey(keys);
+        const steps = [
+          ["app_created", "创建 App", Boolean(appDetail.app)],
+          ["release_created", "发布版本", releases.length > 0],
+          ["license_issued", "签发 License", licenses.length > 0],
+          ["sdk_key_active", "配置 SDK Key", Boolean(activeKey && activeKey.status === "active")],
+          ["app_config", "改造 App 配置", null],
+          ["first_activation", "接入首次激活", false],
+          ["local_verify", "接入本地验签", null],
+          ["online_verify", "接入在线 verify", false],
+          ["heartbeat", "接入 heartbeat", false],
+          ["entitlements", "接入 entitlements", null],
+          ["integrity_report", "接入完整性上报", false],
+          ["risk_drill", "演练错误场景", false],
+        ].map(([id, label, ok]) => ({ id, label, status: ok === null ? "manual" : ok ? "passed" : "current", source: ok === null ? "client" : "client-fallback" }));
+        return {
+          app_id: appID,
+          app: appDetail.app || {},
+          has_active_sdk_key: Boolean(activeKey),
+          has_release: releases.length > 0,
+          has_license: licenses.length > 0,
+          latest_release: latest || null,
+          offline_grace_days: state.settings?.offline_grace_days || 7,
+          steps,
+        };
+      }
+
+      function renderSDKOverview(ctx) {
+        if (!ctx) return;
+        const onboarding = withManualStepState(ctx.onboarding, ctx.appID);
+        const latest = onboarding.latest_release || {};
+        const next = onboarding.steps.find((step) => step.status !== "passed");
+        document.getElementById("sdkPanelOverview").innerHTML = `
+          <div class="sdk-board">
+            <div>
+              <div class="callout">
+                <div class="strong">${escapeHTML(ctx.app?.name || "当前应用")} / ${escapeHTML(ctx.appID)}</div>
+                <div class="muted-line">Endpoint: ${escapeHTML(ctx.params.endpoint)}</div>
+                <div class="muted-line">SDK Key: ${escapeHTML(ctx.sdkKey?.status || "missing")} / ${escapeHTML(ctx.sdkKey?.key_prefix || "未生成")} · Public Key: ${ctx.params.public_key ? "已加载" : "未加载"}</div>
+                <div class="muted-line">Release: ${escapeHTML(latest.version || "未发布")} · Hash: ${escapeHTML(latest.main_binary_hash || "未配置")}</div>
+              </div>
+              <div class="sdk-progress">${onboarding.steps.map(renderSDKStep).join("")}</div>
+            </div>
+            <div class="sdk-evidence">
+              <h3>最近验证证据</h3>
+              ${evidenceRows(onboarding)}
+              <div class="callout"><div class="strong">下一步建议</div>${escapeHTML(next ? next.label : "接入闭环已完成，保持心跳和风险演练定期验证。")}</div>
+            </div>
+          </div>`;
+      }
+
+      function renderSDKStep(step) {
+        const symbol = step.status === "passed" ? "✓" : step.status === "blocked" ? "!" : step.status === "manual" ? "·" : "●";
+        const manual = step.source === "client" ? `<div class="sdk-actions">${actionButton(step.status === "passed" ? "取消标记" : "标记为已接入", "sdk-manual-step", step.id)}</div>` : "";
+        return `<div class="sdk-progress-item">
+          <div class="sdk-progress-head"><span class="strong">${escapeHTML(step.label)}</span><span class="sdk-status-dot sdk-status-${escapeHTML(step.status)}">${symbol}</span></div>
+          <div class="muted-line">${escapeHTML(step.source)} · ${escapeHTML(step.status)}</div>
+          ${manual}
+        </div>`;
+      }
+
+      function evidenceRows(onboarding) {
+        const rows = [
+          ["最新设备", onboarding.latest_device ? `${onboarding.latest_device.id} · ${formatDateTime(onboarding.latest_device.last_seen_at)}` : "暂无"],
+          ["完整性上报", onboarding.latest_integrity_report ? `${onboarding.latest_integrity_report.app_version} · ${formatDateTime(onboarding.latest_integrity_report.created_at)}` : "暂无"],
+          ["风险事件", onboarding.latest_risk_event ? `${onboarding.latest_risk_event.event_type} · ${onboarding.latest_risk_event.severity}` : "暂无"],
+          ["离线宽限", `${onboarding.offline_grace_days ?? state.settings?.offline_grace_days ?? 7} 天`],
+        ];
+        return rows.map(([label, value]) => `<p><span class="strong">${escapeHTML(label)}:</span> ${escapeHTML(value)}</p>`).join("");
+      }
+
+      function renderSDKGuide(ctx) {
+        const cards = [
+          ["App 启动流程", "main.go", "初始化配置、本地 token 验签、后台 verify、heartbeat 定时器。", "断网时基础功能可启动，联网后授权状态自动刷新。"],
+          ["授权模块", "internal/licenseguard/", "隔离 API 调用、设备指纹、完整性采集、缓存和 Ed25519 验签。", "业务层只依赖 Service 或等价接口。"],
+          ["业务功能层", "export/batch/pro features", "高价值功能统一调用 HasEntitlement(\"export.enabled\")。", "移除 entitlement 后对应功能不可用。"],
+          ["用户提示层", "ui/license_errors.go", "错误码映射为可理解提示，并给出重试、联网、联系管理员等动作。", "测试人员可通过错误码定位授权、设备、版本或完整性问题。"],
+        ];
+        document.getElementById("sdkPanelGuide").innerHTML = `<div class="sdk-guide-grid">${cards
+          .map(
+            ([title, path, todo, success], index) => `<div class="sdk-guide-card">
+              <h3>步骤 ${index + 1}: ${escapeHTML(title)}</h3>
+              <p><span class="strong">放在哪里:</span> ${escapeHTML(path)}</p>
+              <p><span class="strong">App 要改什么:</span> ${escapeHTML(todo)}</p>
+              <p><span class="strong">成功标准:</span> ${escapeHTML(success)}</p>
+            </div>`,
+          )
+          .join("")}</div>`;
+      }
+
+      function renderSDKGenerate(ctx) {
+        document.getElementById("sdkPanelGenerate").innerHTML = `
+          <div class="sdk-board">
+            <div class="sdk-param-panel">
+              <h3>参数面板</h3>
+              <div class="sdk-param-grid">${sdkParamInputs(ctx.params)}</div>
+            </div>
+            <div>
+              <div class="snippet-tabs">${snippetButtons().join("")}</div>
+              <div class="code-box">
+                <div class="code-head">
+                  <span id="generatedSnippetTitle">自动生成</span>
+                  <button class="button secondary" data-copy-target="generatedSnippet"><i class="icon" data-lucide="copy"></i><span>复制</span></button>
+                </div>
+                <pre id="generatedSnippet"></pre>
+              </div>
+            </div>
+          </div>`;
+        renderGeneratedOutputs();
+      }
+
+      function sdkParamInputs(params) {
+        const labels = {
+          endpoint: "Endpoint",
+          app_id: "App ID",
+          license_key: "License Key",
+          app_version: "App Version",
+          binary_hash: "Binary Hash",
+          signer_thumbprint: "Signer Thumbprint",
+          install_id_path: "Install ID Path",
+          token_cache_path: "Token Cache Path",
+        };
+        return Object.entries(labels)
+          .map(([key, label]) => `<div class="field"><label>${escapeHTML(label)}</label><input data-sdk-param="${escapeHTML(key)}" value="${escapeHTML(params[key] || "")}" /></div>`)
+          .join("");
+      }
+
+      function snippetButtons() {
+        return Object.entries(snippets()).map(([key, item]) => `<button type="button" class="${state.sdkSnippet === key ? "active" : ""}" data-sdk-snippet="${escapeHTML(key)}">${escapeHTML(item.label)}</button>`);
+      }
+
+      function renderGeneratedOutputs() {
+        if (!state.sdkContext || !document.getElementById("generatedSnippet")) return;
+        const items = snippets();
+        if (!items[state.sdkSnippet]) state.sdkSnippet = "env";
+        document.querySelectorAll("[data-sdk-snippet]").forEach((node) => node.classList.toggle("active", node.dataset.sdkSnippet === state.sdkSnippet));
+        document.getElementById("generatedSnippetTitle").textContent = items[state.sdkSnippet].label;
+        document.getElementById("generatedSnippet").textContent = items[state.sdkSnippet].build(state.sdkContext.params);
+      }
+
+      function snippets() {
+        return {
+          env: { label: ".env", build: (p) => `LICENSE_GUARD_ENDPOINT=${p.endpoint}\nLICENSE_GUARD_APP_ID=${p.app_id}\nLICENSE_GUARD_APP_VERSION=${p.app_version}\nLICENSE_GUARD_PUBLIC_KEY=${p.public_key}\nLICENSE_GUARD_BINARY_HASH=${p.binary_hash}\nLICENSE_GUARD_SIGNER_THUMBPRINT=${p.signer_thumbprint}\nLG_INSTALL_ID_PATH=${p.install_id_path}\nLG_TOKEN_CACHE_PATH=${p.token_cache_path}\n` },
+          go_config: { label: "Go Config", build: (p) => `cfg := licenseguard.Options{\n    Endpoint: "${p.endpoint}",\n    AppID: "${p.app_id}",\n    PublicKey: "${p.public_key}",\n    AppVersion: "${p.app_version}",\n    BinaryHash: "${p.binary_hash}",\n    SignerThumbprint: "${p.signer_thumbprint}",\n}\nclient, err := licenseguard.NewClient(cfg)\n` },
+          startup: { label: "启动流程", build: () => `cached, err := client.VerifyLocalOnStartup()\nif err == nil && cached.Allowed {\n    enableBaseFeatures(cached.Entitlements)\n    go refreshLicenseOnline(context.Background(), client)\n} else {\n    showActivationOrRestrictedMode(err)\n}\n` },
+          activate: { label: "Activate", build: (p) => demoCommand(p, "activate", true) },
+          local: { label: "Local Verify", build: (p) => demoCommand(p, "local", false) },
+          verify: { label: "Verify + Heartbeat", build: (p) => `${demoCommand(p, "verify", false)}\n\n${demoCommand(p, "heartbeat", false)}` },
+          entitlements: { label: "Entitlements", build: () => `if !client.HasEntitlement(result, "export.enabled") {\n    return errors.New("当前授权不包含导出功能")\n}\nrunExportJob()\n` },
+          errors: { label: "Errors", build: () => `"LICENSE_REVOKED": "授权已吊销，请联系管理员。",\n"LICENSE_SUSPENDED": "授权已暂停，请联系管理员恢复。",\n"DEVICE_BLOCKED": "当前设备已被封禁。",\n"DEVICE_LIMIT_EXCEEDED": "授权设备数已达上限，请解绑旧设备。",\n"INTEGRITY_FAILED": "应用完整性校验失败，请重新安装官方版本。",\n"TOKEN_EXPIRED": "授权状态需要联网刷新。",\n"APP_VERSION_BLOCKED": "当前版本已停用，请升级。",\n` },
+        };
+      }
+
+      function demoCommand(p, mode, includeLicense) {
+        const license = includeLicense && p.license_key ? ` -license "${p.license_key}"` : "";
+        return `LG_INSTALL_ID_PATH="${p.install_id_path}" \\\nLG_TOKEN_CACHE_PATH="${p.token_cache_path}" \\\ngo run ./examples/windows-go-demo -endpoint "${p.endpoint}" -app-id "${p.app_id}"${license} -version "${p.app_version}" -binary-hash "${p.binary_hash}" -signer "${p.signer_thumbprint}" -public-key "${p.public_key}" -mode ${mode}`;
+      }
+
+      function renderSDKVerify(ctx) {
+        if (!ctx) return;
+        const p = ctx.params;
+        const tamper = `${demoCommand({ ...p, binary_hash: "tampered-hash" }, "verify", false)}`;
+        document.getElementById("sdkPanelVerify").innerHTML = `
+          <div class="sdk-board">
+            <div class="code-grid">
+              <div class="code-box"><div class="code-head"><span>首次激活</span><button class="button secondary" data-copy-target="verifyActivateCommand"><i class="icon" data-lucide="copy"></i><span>复制</span></button></div><pre id="verifyActivateCommand">${escapeHTML(demoCommand(p, "activate", true))}</pre></div>
+              <div class="code-box"><div class="code-head"><span>在线 verify + heartbeat</span><button class="button secondary" data-copy-target="verifyOnlineCommand"><i class="icon" data-lucide="copy"></i><span>复制</span></button></div><pre id="verifyOnlineCommand">${escapeHTML(`${demoCommand(p, "verify", false)}\n\n${demoCommand(p, "heartbeat", false)}`)}</pre></div>
+              <div class="code-box"><div class="code-head"><span>篡改 hash 演练</span><button class="button secondary" data-copy-target="tamperCommand"><i class="icon" data-lucide="copy"></i><span>复制</span></button></div><pre id="tamperCommand">${escapeHTML(tamper)}</pre></div>
+            </div>
+            <div class="sdk-evidence">
+              <h3>验收状态</h3>
+              ${evidenceRows(withManualStepState(ctx.onboarding, ctx.appID))}
+              <div class="sdk-actions">${actionButton("下载集成包", "download-bundle", ctx.appID)}</div>
+            </div>
+          </div>`;
+      }
+
+      function activeSDKKey(keys) {
+        return [...keys].find((item) => item.status === "active") || keys[0] || null;
+      }
+
+      function manualStepIDs(appID) {
+        try {
+          return new Set(JSON.parse(localStorage.getItem(`lg_sdk_manual_${appID}`) || "[]"));
+        } catch {
+          return new Set();
+        }
+      }
+
+      function withManualStepState(onboarding, appID) {
+        const selected = manualStepIDs(appID);
+        return { ...onboarding, steps: (onboarding.steps || []).map((step) => (step.source === "client" && selected.has(step.id) ? { ...step, status: "passed" } : step)) };
+      }
+
+      function toggleManualSDKStep(stepID) {
+        if (!state.sdkContext) return;
+        const key = `lg_sdk_manual_${state.sdkContext.appID}`;
+        const selected = manualStepIDs(state.sdkContext.appID);
+        if (selected.has(stepID)) selected.delete(stepID);
+        else selected.add(stepID);
+        localStorage.setItem(key, JSON.stringify([...selected]));
+      }
+
+      async function downloadIntegrationBundle(appID) {
+        const headers = { "Content-Type": "application/json" };
+        if (state.token) headers.Authorization = `Bearer ${state.token}`;
+        const res = await fetch(`/admin/apps/${encodeURIComponent(appID)}/integration-bundle`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ endpoint: state.sdkContext?.params.endpoint || `${window.location.origin}/v1` }),
+        });
+        if (!res.ok) {
+          document.getElementById("copyState").textContent = "集成包生成失败";
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `licenseguard-integration-${appID}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        document.getElementById("copyState").textContent = "集成包已生成";
+      }
+
+      function renderSDKKeyPanel(appID, sdkKey, keys) {
+        const rotatedCount = keys.filter((item) => item.status === "rotated").length;
+        const status = sdkKey ? `${badge(sdkKey.status, sdkKey.status === "active" ? "success" : "warning")} ${escapeHTML(sdkKey.key_prefix || "")}` : badge("未生成", "warning");
+        const rotated = rotatedCount ? `<div class="muted-line">历史轮换 ${rotatedCount} 次</div>` : "";
+        document.getElementById("sdkKeyPanel").innerHTML = `
+          <div class="callout">
+            <div class="strong">SDK Key</div>
+            <div>${status}</div>
+            ${rotated}
+            <div class="muted-line">Secret 只在轮换后显示一次，服务端仅保存 hash。</div>
+            ${actionButton("轮换", "rotate-sdk-key", appID)}
+          </div>`;
+        document.getElementById("sdkSecretState").innerHTML = state.sdkSecret ? `<div class="callout"><div class="strong">新 SDK Secret，只显示一次</div><div class="mono">${escapeHTML(state.sdkSecret)}</div></div>` : "";
+      }
+
+      function formatDate(value) {
+        return value ? new Date(value).toLocaleDateString() : "";
+      }
+
+      function formatDateTime(value) {
+        return value ? new Date(value).toLocaleString() : "";
+      }
+
+      function escapeHTML(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[char]);
+      }
+
+      document.addEventListener("click", async (event) => {
+        const copyButton = event.target.closest("[data-copy-target]");
+        if (!copyButton) return;
+        const target = document.getElementById(copyButton.dataset.copyTarget);
+        if (!target) return;
+        try {
+          await navigator.clipboard.writeText(target.textContent || "");
+          document.getElementById("copyState").textContent = "已复制";
+          setTimeout(() => {
+            document.getElementById("copyState").textContent = "";
+          }, 1600);
+        } catch {
+          document.getElementById("copyState").textContent = "复制失败，请手动选择文本";
+        }
+      });
+
+      if (state.token) {
+        showApp();
+        loadAll()
+          .then(restoreSectionFromHash)
+          .catch(() => {
+            localStorage.removeItem("lg_admin_token");
+            showLogin();
+          });
+      }
+    </script>
+  </body>
+</html>
