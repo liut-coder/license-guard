@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -200,6 +201,93 @@ func TestCachedAuthorizationKeepsVerifiedCapabilityPolicy(t *testing.T) {
 	}
 }
 
+func TestCachedAuthorizationRejectsTamperedToken(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	claims := LicenseTokenClaims{
+		Iss:          "license-guard",
+		AppID:        "app_test",
+		LicenseID:    "lic_test",
+		DeviceID:     "dev_test",
+		Entitlements: []string{"visionflow.automation"},
+		IssuedAt:     now.Unix(),
+		ExpiresAt:    now.Add(time.Hour).Unix(),
+	}
+	token := signTestToken(t, priv, claims)
+	tampered := tamperTokenPayload(t, token, func(payload *LicenseTokenClaims) {
+		payload.Entitlements = append(payload.Entitlements, "visionflow.admin")
+	})
+	expiresAt := time.Unix(claims.ExpiresAt, 0)
+
+	t.Setenv("LG_TOKEN_CACHE_PATH", t.TempDir()+"/token.json")
+	if err := SaveToken("app_test", VerifyResult{
+		Allowed:      true,
+		LicenseToken: tampered,
+		ExpiresAt:    &expiresAt,
+		Entitlements: []string{"visionflow.admin"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := NewClient(Options{
+		AppID:      "app_test",
+		Endpoint:   "http://127.0.0.1:8090/v1",
+		PublicKey:  base64.StdEncoding.EncodeToString(pub),
+		AppVersion: "1.0.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CachedAuthorization(); err == nil {
+		t.Fatal("expected tampered cached token to fail signature verification")
+	}
+}
+
+func TestCachedAuthorizationRejectsTokenAppMismatch(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	claims := LicenseTokenClaims{
+		Iss:          "license-guard",
+		AppID:        "other_app",
+		LicenseID:    "lic_test",
+		DeviceID:     "dev_test",
+		Entitlements: []string{"visionflow.automation"},
+		IssuedAt:     now.Unix(),
+		ExpiresAt:    now.Add(time.Hour).Unix(),
+	}
+	token := signTestToken(t, priv, claims)
+	expiresAt := time.Unix(claims.ExpiresAt, 0)
+
+	t.Setenv("LG_TOKEN_CACHE_PATH", t.TempDir()+"/token.json")
+	if err := SaveToken("app_test", VerifyResult{
+		Allowed:      true,
+		LicenseToken: token,
+		ExpiresAt:    &expiresAt,
+		Entitlements: []string{"visionflow.automation"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := NewClient(Options{
+		AppID:      "app_test",
+		Endpoint:   "http://127.0.0.1:8090/v1",
+		PublicKey:  base64.StdEncoding.EncodeToString(pub),
+		AppVersion: "1.0.0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CachedAuthorization(); err == nil {
+		t.Fatal("expected cached token app mismatch to fail")
+	}
+}
+
 func signTestToken(t *testing.T, privateKey ed25519.PrivateKey, claims LicenseTokenClaims) string {
 	t.Helper()
 	headerJSON, err := json.Marshal(map[string]string{"alg": "EdDSA", "typ": "LG-LICENSE"})
@@ -215,6 +303,29 @@ func signTestToken(t *testing.T, privateKey ed25519.PrivateKey, claims LicenseTo
 	signingInput := header + "." + payload
 	signature := ed25519.Sign(privateKey, []byte(signingInput))
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
+}
+
+func tamperTokenPayload(t *testing.T, token string, mutate func(*LicenseTokenClaims)) string {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("token parts = %d, want 3", len(parts))
+	}
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode token payload: %v", err)
+	}
+	var claims LicenseTokenClaims
+	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
+		t.Fatalf("unmarshal token payload: %v", err)
+	}
+	mutate(&claims)
+	payloadJSON, err = json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal tampered payload: %v", err)
+	}
+	parts[1] = base64.RawURLEncoding.EncodeToString(payloadJSON)
+	return strings.Join(parts, ".")
 }
 
 func signTestCapabilityPolicy(t *testing.T, privateKey ed25519.PrivateKey, bundle CapabilityPolicyBundle) SignedCapabilityPolicyBundle {
