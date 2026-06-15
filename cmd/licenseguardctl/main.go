@@ -59,6 +59,7 @@ func runReleasePublishWithIO(ctx context.Context, args []string, out io.Writer) 
 	packageFile := fs.String("package", "", "path to the installer or distribution package")
 	packageSHA256 := fs.String("package-sha256", "", "package sha256 override")
 	resourceManifestHash := fs.String("resource-manifest-hash", "", "optional resource manifest hash")
+	businessManifest := fs.String("business-manifest", "", "path to signed VisionFlow business manifest; computes resource_manifest_hash when resource-manifest-hash is empty")
 	downloadURL := fs.String("download-url", "", "release download URL")
 	releaseNotes := fs.String("release-notes", "", "release notes text")
 	releaseNotesFile := fs.String("release-notes-file", "", "release notes file")
@@ -84,6 +85,7 @@ func runReleasePublishWithIO(ctx context.Context, args []string, out io.Writer) 
 		packageFile:          *packageFile,
 		packageSHA256:        *packageSHA256,
 		resourceManifestHash: *resourceManifestHash,
+		businessManifest:     *businessManifest,
 		downloadURL:          *downloadURL,
 		releaseNotes:         *releaseNotes,
 		releaseNotesFile:     *releaseNotesFile,
@@ -210,6 +212,7 @@ type releaseInput struct {
 	packageFile          string
 	packageSHA256        string
 	resourceManifestHash string
+	businessManifest     string
 	downloadURL          string
 	releaseNotes         string
 	releaseNotesFile     string
@@ -234,6 +237,40 @@ type releasePayload struct {
 	MinSupportedVersion  string `json:"min_supported_version,omitempty"`
 	RolloutPercent       int    `json:"rollout_percent"`
 	ReleaseNotes         string `json:"release_notes"`
+}
+
+type signedVisionFlowBusinessManifest struct {
+	Alg       string                     `json:"alg"`
+	KeyType   string                     `json:"keyType"`
+	Manifest  visionFlowBusinessManifest `json:"manifest"`
+	Signature string                     `json:"signature"`
+}
+
+type visionFlowBusinessManifest struct {
+	SchemaVersion string                      `json:"schemaVersion"`
+	AppID         string                      `json:"appId,omitempty"`
+	Release       string                      `json:"release,omitempty"`
+	RuntimeTables []visionFlowTableDigest     `json:"runtimeTables,omitempty"`
+	FileSets      []visionFlowBusinessFileSet `json:"fileSets,omitempty"`
+}
+
+type visionFlowTableDigest struct {
+	Name     string `json:"name"`
+	RowCount int    `json:"rowCount"`
+	SHA256   string `json:"sha256"`
+}
+
+type visionFlowBusinessFileSet struct {
+	Name      string                 `json:"name"`
+	Root      string                 `json:"root,omitempty"`
+	FileCount int                    `json:"fileCount"`
+	SHA256    string                 `json:"sha256"`
+	Files     []visionFlowFileDigest `json:"files,omitempty"`
+}
+
+type visionFlowFileDigest struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 type visionFlowBootstrapInput struct {
@@ -446,6 +483,13 @@ func buildReleasePayload(input releaseInput) (releasePayload, error) {
 	if err != nil {
 		return releasePayload{}, err
 	}
+	resourceManifestHash := strings.TrimSpace(input.resourceManifestHash)
+	if resourceManifestHash == "" && strings.TrimSpace(input.businessManifest) != "" {
+		resourceManifestHash, err = visionFlowBusinessManifestSHA256(input.businessManifest)
+		if err != nil {
+			return releasePayload{}, err
+		}
+	}
 	notes, err := releaseNotesValue(input.releaseNotes, input.releaseNotesFile)
 	if err != nil {
 		return releasePayload{}, err
@@ -473,7 +517,7 @@ func buildReleasePayload(input releaseInput) (releasePayload, error) {
 		Status:               fallback(strings.TrimSpace(input.status), "active"),
 		SignerThumbprint:     strings.TrimSpace(input.signerThumbprint),
 		MainBinaryHash:       mainHash,
-		ResourceManifestHash: strings.TrimSpace(input.resourceManifestHash),
+		ResourceManifestHash: resourceManifestHash,
 		DownloadURL:          strings.TrimSpace(input.downloadURL),
 		PackageSHA256:        packageHash,
 		Mandatory:            input.mandatory,
@@ -703,6 +747,36 @@ func fileSHA256Hex(path string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func visionFlowBusinessManifestSHA256(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("business-manifest path is required")
+	}
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return "", fmt.Errorf("read VisionFlow business manifest: %w", err)
+	}
+	var signed signedVisionFlowBusinessManifest
+	if err := json.Unmarshal(data, &signed); err != nil {
+		return "", fmt.Errorf("decode VisionFlow business manifest: %w", err)
+	}
+	if signed.Alg != "EdDSA" || signed.KeyType != "Ed25519" {
+		return "", fmt.Errorf("unsupported VisionFlow business manifest signature type %s/%s", signed.Alg, signed.KeyType)
+	}
+	if strings.TrimSpace(signed.Signature) == "" {
+		return "", errors.New("VisionFlow business manifest signature is required")
+	}
+	if signed.Manifest.SchemaVersion != "visionflow.business.v1" {
+		return "", fmt.Errorf("unsupported VisionFlow business manifest schema %q", signed.Manifest.SchemaVersion)
+	}
+	payload, err := json.Marshal(signed.Manifest)
+	if err != nil {
+		return "", fmt.Errorf("encode VisionFlow business manifest signing payload: %w", err)
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func releaseNotesValue(value string, file string) (string, error) {

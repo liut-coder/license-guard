@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -66,6 +68,97 @@ func TestBuildReleasePayloadComputesHashes(t *testing.T) {
 	}
 	if payload.MainBinaryHash == "" || payload.PackageSHA256 == "" || payload.ReleaseNotes != "release notes" {
 		t.Fatalf("payload did not compute derived fields: %#v", payload)
+	}
+}
+
+func TestBuildReleasePayloadComputesVisionFlowBusinessManifestHash(t *testing.T) {
+	dir := t.TempDir()
+	manifestPath := filepath.Join(dir, "visionflow-business.manifest.json")
+	manifest := `{
+		"alg": "EdDSA",
+		"keyType": "Ed25519",
+		"manifest": {
+			"schemaVersion": "visionflow.business.v1",
+			"appId": "app_visionflow_windows_prod",
+			"release": "0.2.0",
+			"runtimeTables": [
+				{"name": "automation_task_catalog", "rowCount": 1, "sha256": "dbhash"}
+			],
+			"fileSets": [
+				{
+					"name": "assets_opencv",
+					"root": "assets/opencv",
+					"fileCount": 1,
+					"sha256": "assetshash",
+					"files": [{"path": "detector.onnx", "sha256": "filehash"}]
+				}
+			]
+		},
+		"signature": "signed"
+	}`
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := buildReleasePayload(releaseInput{
+		appID:            "app_visionflow_windows_prod",
+		version:          "0.2.0",
+		buildNumber:      42,
+		mainBinaryHash:   "binaryhash",
+		packageSHA256:    "packagehash",
+		signerThumbprint: "ABCDEF",
+		downloadURL:      "https://download.example/visionflow.exe",
+		businessManifest: manifestPath,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalPayload := `{"schemaVersion":"visionflow.business.v1","appId":"app_visionflow_windows_prod","release":"0.2.0","runtimeTables":[{"name":"automation_task_catalog","rowCount":1,"sha256":"dbhash"}],"fileSets":[{"name":"assets_opencv","root":"assets/opencv","fileCount":1,"sha256":"assetshash","files":[{"path":"detector.onnx","sha256":"filehash"}]}]}`
+	sum := sha256.Sum256([]byte(canonicalPayload))
+	want := hex.EncodeToString(sum[:])
+	if payload.ResourceManifestHash != want {
+		t.Fatalf("resource manifest hash = %q, want %q", payload.ResourceManifestHash, want)
+	}
+}
+
+func TestBuildReleasePayloadResourceManifestHashOverridesBusinessManifest(t *testing.T) {
+	payload, err := buildReleasePayload(releaseInput{
+		appID:                "app_visionflow_windows_prod",
+		version:              "0.2.0",
+		buildNumber:          42,
+		mainBinaryHash:       "binaryhash",
+		packageSHA256:        "packagehash",
+		signerThumbprint:     "ABCDEF",
+		downloadURL:          "https://download.example/visionflow.exe",
+		resourceManifestHash: "explicit",
+		businessManifest:     filepath.Join(t.TempDir(), "missing.json"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.ResourceManifestHash != "explicit" {
+		t.Fatalf("resource manifest hash = %q, want explicit", payload.ResourceManifestHash)
+	}
+}
+
+func TestBuildReleasePayloadRejectsInvalidBusinessManifest(t *testing.T) {
+	manifestPath := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(manifestPath, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := buildReleasePayload(releaseInput{
+		appID:            "app_visionflow_windows_prod",
+		version:          "0.2.0",
+		buildNumber:      42,
+		mainBinaryHash:   "binaryhash",
+		packageSHA256:    "packagehash",
+		signerThumbprint: "ABCDEF",
+		downloadURL:      "https://download.example/visionflow.exe",
+		businessManifest: manifestPath,
+	})
+	if err == nil || !strings.Contains(err.Error(), "decode VisionFlow business manifest") {
+		t.Fatalf("error = %v, want decode VisionFlow business manifest", err)
 	}
 }
 

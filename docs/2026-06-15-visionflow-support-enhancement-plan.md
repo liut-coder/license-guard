@@ -444,6 +444,7 @@ build_number
 main_binary_hash
 signer_thumbprint
 package_sha256
+business_manifest
 download_url
 release_notes
 mandatory
@@ -451,7 +452,7 @@ min_supported_version
 rollout_percent
 ```
 
-已落地：`cmd/licenseguardctl release publish` 支持从签名后 EXE 和安装包自动计算 `main_binary_hash`、`package_sha256`，再调用 Admin API 创建 Release。
+已落地：`cmd/licenseguardctl release publish` 支持从签名后 EXE 和安装包自动计算 `main_binary_hash`、`package_sha256`；支持通过 `-business-manifest` 读取 VisionFlow 已签名业务 manifest，并按 VisionFlow 客户端一致的 signing payload 计算 `business_manifest_sha256`，写入当前 Release 的 `resource_manifest_hash` 基线；显式 `-resource-manifest-hash` 仍然优先。
 
 - [ ] 支持 VisionFlow 发布后自动登记 Release。
 
@@ -464,6 +465,7 @@ build VisionFlow
 打安装包
 计算安装包 SHA-256
 上传安装包
+读取已签名业务 manifest 并计算 signing payload SHA-256
 注册 License Guard Release
 ```
 
@@ -656,8 +658,9 @@ hash 字段缺失
 - [ ] 接入包不包含 SDK secret、私钥、admin token、生产 license key。
 - [ ] Admin UI 可查看和编辑 VisionFlow capability policy。
 - [ ] Admin UI 可预览某个 license 对某个 capability 的最终结果。
-- [ ] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。
-- [ ] Release 能登记 VisionFlow `business_manifest_sha256`、受保护 DB hash、assets hash、workflow hash。
+- [x] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。
+- [x] Release 能登记 VisionFlow `business_manifest_sha256`，当前复用 `resource_manifest_hash` 作为发布基线。
+- [ ] Release schema/发布脚本能分别登记受保护 DB hash、assets hash、workflow hash。
 - [ ] 客户端 verify 返回 `update.available` 时字段完整。
 - [ ] `mandatory=true` 时客户端收到 `update.required=true`。
 - [ ] Admin 登录、activate、verify 的限流或失败延迟生效。
