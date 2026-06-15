@@ -649,7 +649,7 @@ hash 字段缺失
 - [x] `Activate` 成功后 token 可保存并重新读取。
 - [x] 本地 token 被篡改后验签失败。
 - [x] 本地 token 的 `app_id` 与当前 App 不匹配时拒绝缓存授权。
-- [ ] VisionFlow 能通过本地 `replace` import SDK 并编译。
+- [x] VisionFlow 能通过本地 `replace` import SDK 并编译。
 - [x] License Guard 后台存在 VisionFlow App、Release、License。
 - [x] VisionFlow 使用有效 license 激活后，后台出现 Device 和 Activation。
 - [x] `licenseguardctl visionflow bootstrap` 一条命令能生成 VisionFlow 可用本地试用配置。
