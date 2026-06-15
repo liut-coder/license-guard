@@ -13,6 +13,8 @@
 - 接入约束：不追求完全零配置；客户端至少需要可信的 Endpoint、App ID、Public Key 和 license 激活入口。
 - 已确认不做：不把 SDK secret、服务端私钥、admin token 或生产 license key 放进客户端集成包。
 - 已确认新方向：能力定义和强制边界由 VisionFlow 内置；拦截策略、套餐、客户差异和可视化配置由 License Guard 管理；客户端配置只能收紧体验，不能绕过 license entitlement。
+- 已确认新增风险：VisionFlow 核心业务定义大量落在本地 SQLite、图片资源和 workflow 文件中；License Guard 不直接保护这些文件，但需要接收 VisionFlow 的完整性上报并参与授权拒绝、风险事件和版本基线管理。
+- 已确认本地加密边界：VisionFlow 可使用 SQLCipher、强随机密钥、Windows DPAPI 或 Credential Manager 保护本地 SQLite；License Guard 不生成、不保存、不恢复客户端本地 DB 密钥。
 - 待确认：License Guard 正式部署目标环境、安装包托管地址、代码签名证书、套餐/客户模型是否进入首期可视化。
 
 ## 1. 最终形态与配置归属
@@ -45,6 +47,8 @@ VisionFlow Capability Gate
 | 套餐/客户/license 差异 | License Guard | 是 | 按默认策略、套餐、客户、license 层级合并 |
 | Release 元数据 | CI / `licenseguardctl` 写入 License Guard | 是 | 不应人工逐项填写 hash 和包摘要 |
 | 私有化部署覆盖 | 部署配置 | 可选 | 只能收紧或改提示，不能放宽授权 |
+| VisionFlow 本地业务 manifest hash | VisionFlow 构建/CI 写入 License Guard Release | 是 | 用于比对受保护 DB 表、assets、workflow 是否匹配官方发布基线 |
+| VisionFlow 本地 DB 加密密钥 | VisionFlow 客户端系统安全区 | 否 | License Guard 不接触密钥，避免服务端变成客户本地数据恢复依赖 |
 
 策略合并原则：
 
@@ -66,6 +70,7 @@ VisionFlow 内置安全基线
 | Capability Policy 模型 | 服务端能保存并下发 VisionFlow 能力策略 | P0 |
 | 策略安全边界 | 策略不能放宽 license 未包含的 entitlement | P0 |
 | 授权诊断支撑 | API 能解释 license、device、release、policy 和最近拒绝原因 | P0 |
+| VisionFlow 业务完整性上报 | verify/heartbeat 能记录业务 manifest、DB 定义、assets、workflow hash | P0 |
 | Release 自动登记 | 发布后不用人工复制 hash | P1 |
 | 接入包生成 | 后台可下载 VisionFlow 接入配置包 | P1 |
 | 能力策略可视化 | Admin UI 可配置 capability 拦截方式和提示文案 | P1 |
@@ -165,6 +170,38 @@ policy 命中结果
 最近一次 verify / heartbeat
 最近一次 capability deny 原因
 ```
+
+- [ ] 扩展 VisionFlow integrity report 字段。
+
+License Guard 不读取客户端本地 SQLite，也不直接校验图片文件；它只接收 VisionFlow 上报的摘要并和 Release 基线比对。
+
+建议字段：
+
+```text
+business_manifest_sha256
+business_manifest_signature_valid
+protected_db_schema_hash
+protected_db_tables_hash
+assets_manifest_sha256
+workflow_manifest_sha256
+business_integrity_status
+business_integrity_errors
+```
+
+拒绝规则：
+
+- `business_manifest_signature_valid=false`：拒绝受控能力，记录 high risk。
+- Release 要求的 `business_manifest_sha256` 与客户端上报不一致：拒绝受控能力，记录 `business_manifest_mismatch`。
+- `protected_db_tables_hash` 不匹配：拒绝受控能力，记录 `protected_db_definition_mismatch`。
+- `assets_manifest_sha256` 不匹配：按策略拒绝或降级，记录 `asset_manifest_mismatch`。
+- 用户运行数据 hash 不进入拒绝依据，避免把正常配置、记录、evidence 清理误判为破解。
+
+客户端本地 SQLite 加密边界：
+
+- SQLCipher 密钥由 VisionFlow 在本机生成并保存到 Windows DPAPI 或 Credential Manager。
+- License Guard 不保存 SQLCipher 密钥、不参与 DB 解密、不提供本地 DB 恢复。
+- License Guard 只接收加密 DB 打开后的完整性摘要，例如 protected table hash 和 business manifest hash。
+- DB 加密失败、密钥丢失、密钥不可读属于 VisionFlow 本地诊断/恢复问题，不应被 License Guard 误判为 license 有效。
 
 ### P0：VisionFlow 接入前置
 
@@ -428,6 +465,11 @@ config bundle
 main_binary_hash
 signer_thumbprint
 package_sha256
+business_manifest_sha256
+protected_db_schema_hash
+protected_db_tables_hash
+assets_manifest_sha256
+workflow_manifest_sha256
 download_url
 ```
 
@@ -447,6 +489,11 @@ build_number
 main_binary_hash
 signer_thumbprint
 package_sha256
+business_manifest_sha256
+protected_db_schema_hash
+protected_db_tables_hash
+assets_manifest_sha256
+workflow_manifest_sha256
 download_url
 release_notes
 mandatory
@@ -488,6 +535,7 @@ hash 字段缺失
 - [ ] 自动采集 signer thumbprint。
 - [ ] 增加 debugger 基础检测。
 - [ ] 增加可疑模块和 VM 指标采集。
+- [ ] 增加 VisionFlow 业务定义完整性风险事件。
 - [ ] 风险信号只参与评分，不单点永久封禁。
 - [ ] 高价值功能可缩短 token TTL。
 - [ ] 增加异常系统时间风险事件。
@@ -505,6 +553,8 @@ hash 字段缺失
 - 使用被封禁设备。
 - 使用被停用旧版本。
 - 使用 hash 不匹配的篡改包。
+- 使用业务定义 manifest 不匹配的 VisionFlow 本地包。
+- 使用受保护 DB 定义、图片资源或 workflow 被篡改的本地环境。
 - 长期完全离线绕过授权。
 
 ### 当前方案不能绝对防
@@ -513,6 +563,8 @@ hash 字段缺失
 - Hook 本地验签结果。
 - 修改二进制后绕过客户端逻辑。
 - 模拟服务端响应，尤其是客户端未固定 public key 或 HTTPS 校验不严格时。
+- 用户读取或复制本地 SQLite、图片资源、workflow 文件。
+- 用户修改运行记录、evidence、用户配置等非受保护数据。
 
 定位：适合商业授权、防共享、防低成本破解、防内部滥用；对专业逆向是提高成本，不是绝对防护。
 
@@ -531,6 +583,8 @@ hash 字段缺失
 - [ ] 默认 VisionFlow capability policy 存在，且未知 capability 不会被默认放行。
 - [ ] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
 - [ ] 诊断 API 能解释一次 capability deny 的具体原因。
+- [ ] verify/heartbeat 能接收并保存 VisionFlow 业务完整性字段。
+- [ ] 业务 manifest 签名无效或 hash 不匹配时返回拒绝或风险事件。
 
 ### P1 验收
 
@@ -541,6 +595,7 @@ hash 字段缺失
 - [ ] Admin UI 可查看和编辑 VisionFlow capability policy。
 - [ ] Admin UI 可预览某个 license 对某个 capability 的最终结果。
 - [ ] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。
+- [ ] Release 能登记 VisionFlow `business_manifest_sha256`、受保护 DB hash、assets hash、workflow hash。
 - [ ] 客户端 verify 返回 `update.available` 时字段完整。
 - [ ] `mandatory=true` 时客户端收到 `update.required=true`。
 - [ ] Admin 登录、activate、verify 的限流或失败延迟生效。
@@ -560,6 +615,8 @@ hash 字段缺失
 - [ ] Windows SDK 可读取并上报 signer thumbprint。
 - [ ] WinVerifyTrust 校验失败能形成风险事件。
 - [ ] debugger / suspicious modules / VM indicators 能进入 integrity report。
+- [ ] VisionFlow `business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch` 能形成风险事件。
+- [ ] VisionFlow 上报 DB 加密或密钥读取失败时能形成独立诊断事件，不和 license 过期、吊销混淆。
 - [ ] 高风险设备可触发短 token TTL 或 deny。
 - [ ] SDK 有明确版本 tag 或子模块发布方案。
 
@@ -572,6 +629,9 @@ hash 字段缺失
 - 不在本阶段实现 Redis、对象存储或复杂多租户计费。
 - 不允许通过前端配置、部署配置或策略覆盖放宽 license entitlement。
 - 不把 VisionFlow 的安全基线交给客户可编辑配置维护。
+- 不直接读取或修复 VisionFlow 客户端本地 SQLite、图片资源和 workflow 文件；License Guard 只保存发布基线、接收完整性摘要、给出授权/风险判定。
+- 不保存 VisionFlow SQLCipher 密钥，不承担客户本地 DB 数据恢复职责。
+- 不把用户运行数据、evidence、普通用户配置的 hash mismatch 作为默认拒绝依据。
 
 ## 7. 待确认问题
 
@@ -582,3 +642,6 @@ hash 字段缺失
 - 是否需要多环境：dev、staging、production。
 - 套餐/客户模型首期是否只做 VisionFlow 单 App，还是直接抽象为通用 License Guard 能力。
 - Capability policy 签名是否复用 license token Ed25519 key，还是独立 policy signing key。
+- VisionFlow 业务 manifest hash 是否作为 Release 必填字段，还是首期作为可选完整性增强字段。
+- `assets_manifest_sha256` 不匹配时首期是直接拒绝，还是按 capability 策略只拒绝依赖该资源的任务。
+- VisionFlow DB 加密失败是否需要 License Guard risk event，还是仅在 VisionFlow 本地诊断页展示。
