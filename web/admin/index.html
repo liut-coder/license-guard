@@ -1845,22 +1845,24 @@
         event.preventDefault();
         const form = new FormData(event.currentTarget);
         const appID = String(form.get("app_id") || "");
+        const payload = {
+          platform: form.get("platform"),
+          version: form.get("version"),
+          build_number: Number(form.get("build_number")),
+          status: form.get("status"),
+          mandatory: form.get("mandatory") === "true",
+          main_binary_hash: form.get("main_binary_hash"),
+          signer_thumbprint: form.get("signer_thumbprint"),
+          rollout_percent: Number(form.get("rollout_percent")),
+          min_supported_version: form.get("min_supported_version"),
+          download_url: form.get("download_url"),
+          package_sha256: form.get("package_sha256"),
+          release_notes: form.get("release_notes"),
+        };
+        if (!confirmReleasePayload(payload)) return;
         await api(`/admin/apps/${encodeURIComponent(appID)}/releases`, {
           method: "POST",
-          body: JSON.stringify({
-            platform: form.get("platform"),
-            version: form.get("version"),
-            build_number: Number(form.get("build_number")),
-            status: form.get("status"),
-            mandatory: form.get("mandatory") === "true",
-            main_binary_hash: form.get("main_binary_hash"),
-            signer_thumbprint: form.get("signer_thumbprint"),
-            rollout_percent: Number(form.get("rollout_percent")),
-            min_supported_version: form.get("min_supported_version"),
-            download_url: form.get("download_url"),
-            package_sha256: form.get("package_sha256"),
-            release_notes: form.get("release_notes"),
-          }),
+          body: JSON.stringify(payload),
         });
         await loadAll();
       });
@@ -1954,6 +1956,7 @@
           if (action === "release-blocked") body.status = "blocked";
           if (action === "release-mandatory") body.mandatory = true;
           if (action === "release-optional") body.mandatory = false;
+          if (!confirmReleaseAction(action)) return;
           await api(`/admin/apps/${encodeURIComponent(appID)}/releases/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
           await loadAll();
         }
@@ -2234,6 +2237,25 @@
         if (item.status !== "blocked") actions.push(actionButton("阻止", "release-blocked", item.id, item.app_id));
         actions.push(item.mandatory ? actionButton("推荐", "release-optional", item.id, item.app_id) : actionButton("强制", "release-mandatory", item.id, item.app_id));
         return `<span class="action-group">${actions.join("")}</span>`;
+      }
+
+      function confirmReleasePayload(payload) {
+        const risks = [];
+        if (payload.status === "blocked") risks.push("新版本将创建为 blocked");
+        if (payload.mandatory) risks.push("客户端会收到强制更新");
+        if (payload.min_supported_version) risks.push(`最低支持版本: ${payload.min_supported_version}`);
+        if (payload.rollout_percent >= 0 && payload.rollout_percent < 100) risks.push(`灰度比例: ${payload.rollout_percent}%`);
+        if (!risks.length) return true;
+        return window.confirm(`确认发布带风险控制的 Release？\n\n${risks.join("\n")}`);
+      }
+
+      function confirmReleaseAction(action) {
+        const messages = {
+          "release-blocked": "确认阻止该 Release？对应版本客户端 verify 将被拒绝。",
+          "release-mandatory": "确认将该 Release 设为强制更新？客户端会收到 update.required=true。",
+          "release-deprecated": "确认将该 Release 标记为过时？客户端 token TTL 可能缩短并提示更新。",
+        };
+        return messages[action] ? window.confirm(messages[action]) : true;
       }
 
       function renderLicenses(items) {

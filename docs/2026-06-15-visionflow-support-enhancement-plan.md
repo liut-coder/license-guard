@@ -612,7 +612,7 @@ download_url
 - `TestAdminReleaseCreateRejectsMissingIntegrityFieldsWhenValidationEnabled`
 - `TestAdminReleasePatchPersistsVisionFlowResourceFields`
 
-- [ ] Admin UI 支持强制更新、最低支持版本、灰度比例的操作确认。
+- [x] Admin UI 支持强制更新、最低支持版本、灰度比例的操作确认。
 - [x] 增加 update 行为 smoke：普通更新、强制更新、版本封禁、最低版本。
 
 已落地：
@@ -664,7 +664,7 @@ build VisionFlow
 注册 License Guard Release
 ```
 
-- [ ] Admin UI 对 Release 风险字段加确认。
+- [x] Admin UI 对 Release 风险字段加确认。
 
 需要确认：
 
