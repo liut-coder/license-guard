@@ -51,6 +51,53 @@ func TestReleaseInRollout(t *testing.T) {
 	}
 }
 
+func TestChallengeEndpointCleansExpiredChallenges(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	now := time.Now()
+	server.mu.Lock()
+	server.challenges["expired"] = Challenge{
+		ID:        "expired",
+		Nonce:     "expired-nonce",
+		AppID:     DemoAppID,
+		InstallID: "expired-install",
+		ExpiresAt: now.Add(-time.Minute),
+		CreatedAt: now.Add(-6 * time.Minute),
+	}
+	server.challenges["active"] = Challenge{
+		ID:        "active",
+		Nonce:     "active-nonce",
+		AppID:     DemoAppID,
+		InstallID: "active-install",
+		ExpiresAt: now.Add(time.Minute),
+		CreatedAt: now,
+	}
+	server.mu.Unlock()
+
+	body := []byte(`{"app_id":"` + DemoAppID + `","platform":"windows","install_id":"new-install","app_version":"1.4.2"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/challenge", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("challenge status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if _, ok := server.challenges["expired"]; ok {
+		t.Fatalf("expired challenge was not cleaned: %#v", server.challenges)
+	}
+	if _, ok := server.challenges["active"]; !ok {
+		t.Fatalf("active challenge was removed: %#v", server.challenges)
+	}
+	if len(server.challenges) != 2 {
+		t.Fatalf("challenges = %#v, want active plus newly created challenge", server.challenges)
+	}
+}
+
 func TestVerifyReturnsOptionalUpdateInfo(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {

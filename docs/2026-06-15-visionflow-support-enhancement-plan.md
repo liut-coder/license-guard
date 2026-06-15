@@ -500,7 +500,14 @@ Public Key 指纹
 - [ ] 收紧生产 CORS，避免 Admin UI/API 长期使用 `Access-Control-Allow-Origin: *`。
 - [ ] 处理 demo admin：生产首次启动强制改密或生产模式禁用 demo seed。
 - [ ] Admin 登录、challenge、activate、verify 增加限流或失败延迟。
-- [ ] 周期清理过期 challenge，避免内存 map 长期增长。
+- [x] 周期清理过期 challenge，避免内存 map 长期增长。
+
+已落地：`/v1/challenge` 创建新 challenge 和 activate/verify 校验 challenge 时会惰性清理过期 challenge，避免未使用 challenge 长期留在内存 map。
+
+验证：
+
+- `TestChallengeEndpointCleansExpiredChallenges`
+
 - [ ] 日志和审计脱敏：
 
 ```text
@@ -692,7 +699,7 @@ hash 字段缺失
 - [x] 客户端 verify 返回 `update.available` 时字段完整。
 - [x] `mandatory=true` 时客户端收到 `update.required=true`。
 - [ ] Admin 登录、activate、verify 的限流或失败延迟生效。
-- [ ] 过期 challenge 会被清理。
+- [x] 过期 challenge 会被清理。
 - [ ] 生产 CORS/HTTPS 配置有文档和模板。
 
 ### P2 验收

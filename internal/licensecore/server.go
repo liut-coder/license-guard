@@ -1141,6 +1141,7 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
+	s.cleanupExpiredChallengesLocked(now)
 	if s.findAppLocked(req.AppID) == nil {
 		s.mu.Unlock()
 		writeError(w, http.StatusNotFound, "APP_NOT_FOUND", "app not found")
@@ -2264,18 +2265,33 @@ func (s *Server) isBelowMinSupportedLocked(appID string, platform string, curren
 }
 
 func (s *Server) validateChallengeLocked(appID string, installID string, challengeID string, nonce string) error {
+	now := time.Now()
 	challenge, ok := s.challenges[challengeID]
 	if !ok {
+		s.cleanupExpiredChallengesLocked(now)
 		return fmt.Errorf("challenge not found")
 	}
 	delete(s.challenges, challengeID)
-	if time.Now().After(challenge.ExpiresAt) {
+	if now.After(challenge.ExpiresAt) {
+		s.cleanupExpiredChallengesLocked(now)
 		return fmt.Errorf("challenge expired")
 	}
+	s.cleanupExpiredChallengesLocked(now)
 	if challenge.AppID != appID || challenge.InstallID != installID || challenge.Nonce != nonce {
 		return fmt.Errorf("challenge fields do not match request")
 	}
 	return nil
+}
+
+func (s *Server) cleanupExpiredChallengesLocked(now time.Time) int {
+	removed := 0
+	for id, challenge := range s.challenges {
+		if now.After(challenge.ExpiresAt) {
+			delete(s.challenges, id)
+			removed++
+		}
+	}
+	return removed
 }
 
 func (s *Server) findOrCreateDeviceLocked(input clientVerificationInput) *Device {
