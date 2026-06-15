@@ -1066,6 +1066,46 @@ func TestHighRiskSignalsUseShortTokenTTL(t *testing.T) {
 	}
 }
 
+func TestRiskSignalsPersistIntegrityReportWithoutSingleSignalDeny(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	verifyResp := activateDemoLicense(t, server, "risk-signals-install", map[string]any{
+		"debugger_detected":  true,
+		"suspicious_modules": []string{"observer.dll"},
+		"vm_indicators":      []string{"hypervisor"},
+	})
+	if !verifyResp.Allowed || verifyResp.Code != "" {
+		t.Fatalf("verify response = %#v, want allowed risk scoring", verifyResp)
+	}
+	if verifyResp.Risk.Score < 80 || verifyResp.Risk.Level != "high" {
+		t.Fatalf("risk = %#v, want high scoring risk", verifyResp.Risk)
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	report := server.data.IntegrityReports[len(server.data.IntegrityReports)-1]
+	if !report.DebuggerDetected ||
+		len(report.SuspiciousModules) != 1 || report.SuspiciousModules[0] != "observer.dll" ||
+		len(report.VMIndicators) != 1 || report.VMIndicators[0] != "hypervisor" {
+		t.Fatalf("integrity report missing risk signals: %#v", report)
+	}
+	activation := server.latestActivationForLicenseLocked("lic_demo_windows")
+	if activation == nil || activation.ActivationStatus != "active" {
+		t.Fatalf("activation = %#v, want active despite risk signals", activation)
+	}
+	if hasRiskEvent(server.data.RiskEvents, "device_blocked") {
+		t.Fatalf("risk signals should not block device by themselves: %#v", server.data.RiskEvents)
+	}
+	for _, eventType := range []string{"debugger_detected", "suspicious_module_loaded", "vm_indicator"} {
+		if !hasRiskEvent(server.data.RiskEvents, eventType) {
+			t.Fatalf("%s risk event not found in %#v", eventType, server.data.RiskEvents)
+		}
+	}
+}
+
 func TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {

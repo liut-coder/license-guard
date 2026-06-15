@@ -688,7 +688,14 @@ hash 字段缺失
 - [ ] 增加 debugger 基础检测。
 - [ ] 增加可疑模块和 VM 指标采集。
 - [ ] 增加 VisionFlow 业务定义完整性风险事件。
-- [ ] 风险信号只参与评分，不单点永久封禁。
+- [x] 风险信号只参与评分，不单点永久封禁。
+
+已落地：debugger、suspicious modules、VM indicators 会进入 risk score、risk events 和 integrity report；仅这些风险信号不会直接封禁设备或吊销授权。若累计达到 high risk，则按短 token TTL 处理。
+
+验证：
+
+- `TestRiskSignalsPersistIntegrityReportWithoutSingleSignalDeny`
+
 - [x] 高价值功能可缩短 token TTL。
 
 已落地：medium/high risk 且未直接 deny 的授权响应使用 `medium_risk_token_ttl_minutes` 生成短 token；high risk 会在 `risk.actions` 中包含 `shorten_token_ttl`，便于客户端和诊断解释。
@@ -777,7 +784,7 @@ hash 字段缺失
 - [x] 生产客户端固定 public key 策略已文档化，明确 `/v1/public-key` 不能作为每次启动的动态信任源。
 - [ ] Windows SDK 可读取并上报 signer thumbprint。
 - [ ] WinVerifyTrust 校验失败能形成风险事件。
-- [ ] debugger / suspicious modules / VM indicators 能进入 integrity report。
+- [x] debugger / suspicious modules / VM indicators 能进入 integrity report。
 - [x] VisionFlow `business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch`、`workflow_manifest_mismatch` 能形成风险事件。
 - [ ] VisionFlow 上报 DB 加密或密钥读取失败时能形成独立诊断事件，不和 license 过期、吊销混淆。
 - [x] 高风险设备可触发短 token TTL 或 deny。
