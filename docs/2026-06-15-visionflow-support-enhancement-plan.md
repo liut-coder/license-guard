@@ -640,7 +640,19 @@ hash 字段缺失
 
 ### P3：防破解与风控增强
 
-- [ ] SDK 固定 public key 策略文档化：生产客户端不应每次启动动态信任 `/v1/public-key`。
+- [x] SDK 固定 public key 策略文档化：生产客户端不应每次启动动态信任 `/v1/public-key`。
+
+已落地：
+
+- Windows Go 接入指南明确生产客户端必须固定或预置 Ed25519 public key。
+- `/v1/public-key` 仅用于接入包生成、部署对账、诊断展示或人工轮换确认。
+- 服务端返回公钥与客户端内置公钥不一致时，客户端应进入诊断/拒绝状态，不能自动替换本地公钥。
+- 公钥轮换必须通过客户端版本更新、签名配置包或受控运维流程完成。
+
+验证：
+
+- `rg -n "生产客户端必须固定|不得在每次启动时调用|不得每次启动动态信任" docs`
+
 - [ ] Windows SDK 增加 Authenticode / WinVerifyTrust 校验。
 - [ ] 自动采集 signer thumbprint。
 - [ ] 增加 debugger 基础检测。
@@ -725,6 +737,7 @@ hash 字段缺失
 
 ### P3 验收
 
+- [x] 生产客户端固定 public key 策略已文档化，明确 `/v1/public-key` 不能作为每次启动的动态信任源。
 - [ ] Windows SDK 可读取并上报 signer thumbprint。
 - [ ] WinVerifyTrust 校验失败能形成风险事件。
 - [ ] debugger / suspicious modules / VM indicators 能进入 integrity report。
