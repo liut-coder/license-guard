@@ -2487,7 +2487,7 @@ visionflow.export</textarea></div>
               <div class="callout">
                 <div class="strong">${escapeHTML(ctx.app?.name || "当前应用")} / ${escapeHTML(ctx.appID)}</div>
                 <div class="muted-line">Endpoint: ${escapeHTML(ctx.params.endpoint)}</div>
-                <div class="muted-line">SDK Key: ${escapeHTML(ctx.sdkKey?.status || "missing")} / ${escapeHTML(ctx.sdkKey?.key_prefix || "未生成")} · Public Key: ${ctx.params.public_key ? "已加载" : "未加载"}</div>
+                <div class="muted-line">SDK Key: ${escapeHTML(ctx.sdkKey?.status || "missing")} / ${escapeHTML(ctx.sdkKey?.key_prefix || "未生成")} · Public Key: ${escapeHTML(publicKeyFingerprint(ctx.params.public_key))}</div>
                 <div class="muted-line">Release: ${escapeHTML(latest.version || "未发布")} · Hash: ${escapeHTML(latest.main_binary_hash || "未配置")}</div>
               </div>
               <div class="sdk-progress">${onboarding.steps.map(renderSDKStep).join("")}</div>
@@ -2495,9 +2495,17 @@ visionflow.export</textarea></div>
             <div class="sdk-evidence">
               <h3>最近验证证据</h3>
               ${evidenceRows(onboarding)}
+              <div class="sdk-actions">${actionButton("下载接入包", "download-bundle", ctx.appID)}</div>
               <div class="callout"><div class="strong">下一步建议</div>${escapeHTML(next ? next.label : "接入闭环已完成，保持心跳和风险演练定期验证。")}</div>
             </div>
           </div>`;
+      }
+
+      function publicKeyFingerprint(publicKey) {
+        const value = String(publicKey || "").trim();
+        if (!value) return "未加载";
+        if (value.startsWith("加载失败")) return value;
+        return `${value.slice(0, 12)}...${value.slice(-8)}`;
       }
 
       function renderSDKStep(step) {

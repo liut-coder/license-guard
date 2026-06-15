@@ -483,7 +483,7 @@ build VisionFlow
 注册 License Guard Release
 ```
 
-- [ ] Admin UI 增加 VisionFlow 接入总览。
+- [x] Admin UI 增加 VisionFlow 接入总览。
 
 显示：
 
@@ -496,6 +496,8 @@ Public Key 指纹
 最近风险事件
 接入包下载入口
 ```
+
+已落地：SDK 工作台“接入总览”展示当前 App ID、Endpoint、Public Key 指纹、SDK Key 状态、最新 Release、最新设备、完整性上报、风险事件和接入包下载入口。
 
 ### P1：生产安全基线
 
