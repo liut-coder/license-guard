@@ -8,27 +8,39 @@ import (
 )
 
 func TestValidateProductionConfigAllowsDevelopmentDefaults(t *testing.T) {
-	err := validateProductionConfig(false, "json", "", "*")
+	err := validateProductionConfig(false, "json", "", "*", "")
 	if err != nil {
 		t.Fatalf("validateProductionConfig returned error for development defaults: %v", err)
 	}
 }
 
 func TestValidateProductionConfigRequiresPostgresStore(t *testing.T) {
-	err := validateProductionConfig(true, "json", "C:/licenseguard/keys", "https://licenseguard.example.com")
+	err := validateProductionConfig(true, "json", "C:/licenseguard/keys", "https://licenseguard.example.com", "https://licenseguard.example.com")
 	requireErrorContains(t, err, "requires -store=postgres")
 }
 
 func TestValidateProductionConfigRequiresExplicitKeyDir(t *testing.T) {
-	err := validateProductionConfig(true, "postgres", "", "https://licenseguard.example.com")
+	err := validateProductionConfig(true, "postgres", "", "https://licenseguard.example.com", "https://licenseguard.example.com")
 	requireErrorContains(t, err, "requires explicit -key-dir")
 }
 
 func TestValidateProductionConfigRejectsWildcardCORS(t *testing.T) {
 	for _, origins := range []string{"*", " https://licenseguard.example.com , * ", ""} {
-		err := validateProductionConfig(true, "postgres", "C:/licenseguard/keys", origins)
+		err := validateProductionConfig(true, "postgres", "C:/licenseguard/keys", origins, "https://licenseguard.example.com")
 		requireErrorContains(t, err, "requires concrete -cors-allowed-origins")
 	}
+}
+
+func TestValidateProductionConfigRejectsHTTPPublicBaseURL(t *testing.T) {
+	for _, publicBaseURL := range []string{"", "http://licenseguard.example.com", "https://licenseguard.example.com?debug=true"} {
+		err := validateProductionConfig(true, "postgres", "C:/licenseguard/keys", "https://licenseguard.example.com", publicBaseURL)
+		requireErrorContains(t, err, "requires -public-base-url")
+	}
+}
+
+func TestValidateProductionConfigRejectsHTTPCORSOrigins(t *testing.T) {
+	err := validateProductionConfig(true, "postgres", "C:/licenseguard/keys", "http://licenseguard.example.com", "https://licenseguard.example.com")
+	requireErrorContains(t, err, "requires HTTPS -cors-allowed-origins")
 }
 
 func TestValidateProductionConfigAcceptsProductionSettings(t *testing.T) {
@@ -49,7 +61,7 @@ func TestValidateProductionConfigAcceptsProductionSettings(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateProductionConfig(true, tc.store, "C:/licenseguard/keys", tc.origins)
+			err := validateProductionConfig(true, tc.store, "C:/licenseguard/keys", tc.origins, "https://licenseguard.example.com")
 			if err != nil {
 				t.Fatalf("validateProductionConfig returned error: %v", err)
 			}

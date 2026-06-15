@@ -1591,6 +1591,37 @@ func TestAppOnboardingAggregatesServerEvidence(t *testing.T) {
 	}
 }
 
+func TestAppOnboardingUsesConfiguredPublicBaseURL(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := NewJSONStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewJSONStore() error = %v", err)
+	}
+	server, err := NewServerWithStoreOptions(dataDir, store, ServerOptions{
+		SeedDemoData:  true,
+		PublicBaseURL: "https://license.example/",
+	})
+	if err != nil {
+		t.Fatalf("NewServerWithStoreOptions() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/apps/"+DemoAppID+"/onboarding", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("onboarding status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var response OnboardingResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode onboarding response: %v", err)
+	}
+	if response.ClientEndpoint != "https://license.example/v1" {
+		t.Fatalf("client endpoint = %q, want configured HTTPS endpoint", response.ClientEndpoint)
+	}
+}
+
 func TestIntegrationBundleOmitsSecretsAndContainsSkeleton(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -1662,6 +1693,35 @@ func TestIntegrationBundleOmitsSecretsAndContainsSkeleton(t *testing.T) {
 	}
 	if !strings.Contains(files["internal/licenseguard/errors.go"], "INTEGRITY_FAILED") {
 		t.Fatalf("errors skeleton missing code mapping: %s", files["internal/licenseguard/errors.go"])
+	}
+}
+
+func TestIntegrationBundleDefaultsToConfiguredPublicBaseURL(t *testing.T) {
+	dataDir := t.TempDir()
+	store, err := NewJSONStore(dataDir)
+	if err != nil {
+		t.Fatalf("NewJSONStore() error = %v", err)
+	}
+	server, err := NewServerWithStoreOptions(dataDir, store, ServerOptions{
+		SeedDemoData:  true,
+		PublicBaseURL: "https://license.example",
+	})
+	if err != nil {
+		t.Fatalf("NewServerWithStoreOptions() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/apps/"+DemoAppID+"/integration-bundle", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("integration bundle status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	files := readZipFiles(t, rec.Body.Bytes())
+	if strings.TrimSpace(files["endpoint.txt"]) != "https://license.example/v1" {
+		t.Fatalf("endpoint.txt = %q, want configured HTTPS endpoint", files["endpoint.txt"])
 	}
 }
 

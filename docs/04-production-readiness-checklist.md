@@ -45,7 +45,8 @@ bash scripts/production-check.sh
 ## 4. 网络与后台安全
 
 - API 和 Admin UI 对外只通过 HTTPS 暴露。
-- `LG_CORS_ALLOWED_ORIGINS` / `-cors-allowed-origins` 必须配置为具体 HTTPS Origin；生产模式会拒绝空值或 `*`。
+- `LICENSEGUARD_PUBLIC_BASE_URL` / `-public-base-url` 必须配置为外部 HTTPS URL，服务端会用它生成 SDK endpoint 和集成包。
+- `LG_CORS_ALLOWED_ORIGINS` / `-cors-allowed-origins` 必须配置为具体 HTTPS Origin；生产模式会拒绝空值、`*` 或 HTTP origin。
 - 后台入口配置 IP 白名单、MFA 或等效访问控制。
 - Admin 登录、challenge、activate、verify 的失败限流必须开启并经过演练，连续失败应返回 `RATE_LIMITED`。
 - 生产模式禁用自动 demo seed；空库首次启动必须使用 `LG_BOOTSTRAP_ADMIN_ACCOUNT` / `LG_BOOTSTRAP_ADMIN_PASSWORD` 显式创建管理员，首次登录后立即轮换密码并移除 bootstrap secret。

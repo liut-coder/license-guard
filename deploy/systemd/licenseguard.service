@@ -10,7 +10,7 @@ User=licenseguard
 Group=licenseguard
 EnvironmentFile=/etc/licenseguard/licenseguard.env
 WorkingDirectory=/opt/licenseguard
-ExecStart=/usr/local/bin/licenseguard-server -addr=127.0.0.1:8090 -store=postgres -database-url=${DATABASE_URL} -key-dir=/var/lib/licenseguard/keys -admin-dir=/opt/licenseguard/web/admin -migrations-dir=/opt/licenseguard/migrations -cors-allowed-origins=${LG_CORS_ALLOWED_ORIGINS} -production=${LG_PRODUCTION}
+ExecStart=/usr/local/bin/licenseguard-server -addr=127.0.0.1:8090 -store=postgres -database-url=${DATABASE_URL} -key-dir=/var/lib/licenseguard/keys -admin-dir=/opt/licenseguard/web/admin -migrations-dir=/opt/licenseguard/migrations -cors-allowed-origins=${LG_CORS_ALLOWED_ORIGINS} -production=${LG_PRODUCTION} -public-base-url=${LICENSEGUARD_PUBLIC_BASE_URL}
 Restart=on-failure
 RestartSec=5s
 NoNewPrivileges=true

@@ -167,7 +167,7 @@ Use `docs/04-production-readiness-checklist.md` as the manual gate for PostgreSQ
 Production-oriented templates live under `deploy/`:
 
 - `deploy/docker-compose.yml` starts PostgreSQL, runs `licenseguard-migrate`, then starts the API with a persistent signing-key volume.
-- `deploy/.env.example` lists the environment values that must be replaced before deployment.
+- `deploy/.env.example` lists the environment values that must be replaced before deployment, including the HTTPS `LICENSEGUARD_PUBLIC_BASE_URL` used for client endpoints.
 - `deploy/nginx/licenseguard.conf` is a HTTPS reverse-proxy baseline.
 - `deploy/systemd/` contains VM/bare-metal service units for migration and API startup.
 

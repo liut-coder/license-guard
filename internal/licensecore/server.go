@@ -41,6 +41,7 @@ type Server struct {
 	challenges         map[string]Challenge
 	adminSessions      map[string]AdminSession
 	corsAllowedOrigins []string
+	publicBaseURL      string
 	rateLimits         map[string]rateLimitState
 	rateLimitWindow    time.Duration
 	rateLimitFailures  int
@@ -49,6 +50,7 @@ type Server struct {
 type ServerOptions struct {
 	SeedDemoData   bool
 	BootstrapAdmin *BootstrapAdmin
+	PublicBaseURL  string
 }
 
 type BootstrapAdmin struct {
@@ -99,6 +101,7 @@ func NewServerWithStoreOptions(keyDir string, store Store, options ServerOptions
 		challenges:         map[string]Challenge{},
 		adminSessions:      map[string]AdminSession{},
 		corsAllowedOrigins: []string{"*"},
+		publicBaseURL:      normalizePublicBaseURL(options.PublicBaseURL),
 		rateLimits:         map[string]rateLimitState{},
 		rateLimitWindow:    time.Minute,
 		rateLimitFailures:  5,
@@ -755,7 +758,7 @@ func (s *Server) handleVisionFlowCapabilityDefaults(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "added": added})
 }
 
-func (s *Server) handleAppOnboarding(w http.ResponseWriter, _ *http.Request, appID string) {
+func (s *Server) handleAppOnboarding(w http.ResponseWriter, r *http.Request, appID string) {
 	s.mu.Lock()
 	app := s.findAppLocked(appID)
 	if app == nil {
@@ -764,6 +767,7 @@ func (s *Server) handleAppOnboarding(w http.ResponseWriter, _ *http.Request, app
 		return
 	}
 	response := s.onboardingResponseLocked(*app)
+	response.ClientEndpoint = s.defaultClientEndpoint(r)
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, response)
 }
@@ -777,14 +781,7 @@ func (s *Server) handleIntegrationBundle(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if req.Endpoint == "" {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded == "https" || forwarded == "http" {
-			scheme = forwarded
-		}
-		req.Endpoint = scheme + "://" + r.Host + "/v1"
+		req.Endpoint = s.defaultClientEndpoint(r)
 	}
 
 	s.mu.Lock()
@@ -809,6 +806,20 @@ func (s *Server) handleIntegrationBundle(w http.ResponseWriter, r *http.Request,
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+func (s *Server) defaultClientEndpoint(r *http.Request) string {
+	if s.publicBaseURL != "" {
+		return strings.TrimRight(s.publicBaseURL, "/") + "/v1"
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded == "https" || forwarded == "http" {
+		scheme = forwarded
+	}
+	return scheme + "://" + r.Host + "/v1"
 }
 
 func (s *Server) handleAppDiagnostics(w http.ResponseWriter, r *http.Request, appID string) {
@@ -3759,6 +3770,10 @@ func normalizeCORSAllowedOrigins(origins []string) []string {
 		return []string{"*"}
 	}
 	return normalized
+}
+
+func normalizePublicBaseURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
 }
 
 func (s *Server) isRateLimitedLocked(key string, now time.Time) bool {

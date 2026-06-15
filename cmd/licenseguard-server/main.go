@@ -24,12 +24,13 @@ func main() {
 	migrationsDir := flag.String("migrations-dir", "./migrations", "directory containing PostgreSQL migration SQL files")
 	corsAllowedOrigins := flag.String("cors-allowed-origins", envOrDefault("LG_CORS_ALLOWED_ORIGINS", "*"), "comma-separated CORS allowed origins; use concrete HTTPS origins in production")
 	production := flag.Bool("production", envBool("LG_PRODUCTION", false), "enforce production safety checks")
+	publicBaseURL := flag.String("public-base-url", envOrDefault("LG_PUBLIC_BASE_URL", os.Getenv("LICENSEGUARD_PUBLIC_BASE_URL")), "public HTTPS base URL used for client endpoints and integration bundles")
 	bootstrapAdminAccount := flag.String("bootstrap-admin-account", os.Getenv("LG_BOOTSTRAP_ADMIN_ACCOUNT"), "optional admin account to create when the store has no admins")
 	bootstrapAdminPassword := flag.String("bootstrap-admin-password", os.Getenv("LG_BOOTSTRAP_ADMIN_PASSWORD"), "optional admin password used only for first bootstrap")
 	bootstrapAdminName := flag.String("bootstrap-admin-name", envOrDefault("LG_BOOTSTRAP_ADMIN_NAME", "Bootstrap Admin"), "optional admin display name used only for first bootstrap")
 	flag.Parse()
 
-	if err := validateProductionConfig(*production, *storeMode, *keyDir, *corsAllowedOrigins); err != nil {
+	if err := validateProductionConfig(*production, *storeMode, *keyDir, *corsAllowedOrigins, *publicBaseURL); err != nil {
 		log.Fatalf("invalid production config: %s", err)
 	}
 	bootstrapAdmin, err := bootstrapAdminFromConfig(*production, *bootstrapAdminAccount, *bootstrapAdminPassword, *bootstrapAdminName)
@@ -49,6 +50,7 @@ func main() {
 	api, err := licensecore.NewServerWithStoreOptions(resolvedKeyDir, store, licensecore.ServerOptions{
 		SeedDemoData:   !*production,
 		BootstrapAdmin: bootstrapAdmin,
+		PublicBaseURL:  *publicBaseURL,
 	})
 	if err != nil {
 		log.Fatalf("init license guard server: %s", redactLogMessage(err.Error()))
@@ -104,7 +106,7 @@ func buildStore(mode string, dataDir string, databaseURL string, autoMigrate boo
 	}
 }
 
-func validateProductionConfig(production bool, storeMode string, keyDir string, corsAllowedOrigins string) error {
+func validateProductionConfig(production bool, storeMode string, keyDir string, corsAllowedOrigins string, publicBaseURL string) error {
 	if !production {
 		return nil
 	}
@@ -116,6 +118,12 @@ func validateProductionConfig(production bool, storeMode string, keyDir string, 
 	}
 	if corsAllowsWildcard(corsAllowedOrigins) {
 		return fmt.Errorf("production mode requires concrete -cors-allowed-origins, got empty or wildcard")
+	}
+	if err := validateHTTPSOrigins(corsAllowedOrigins); err != nil {
+		return fmt.Errorf("production mode requires HTTPS -cors-allowed-origins: %w", err)
+	}
+	if err := validateHTTPSPublicBaseURL(publicBaseURL); err != nil {
+		return err
 	}
 	return nil
 }
@@ -161,6 +169,35 @@ func corsAllowsWildcard(origins string) bool {
 		}
 	}
 	return strings.TrimSpace(origins) == ""
+}
+
+func validateHTTPSOrigins(origins string) error {
+	for _, part := range strings.Split(origins, ",") {
+		origin := strings.TrimSpace(part)
+		if origin == "" {
+			continue
+		}
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return fmt.Errorf("invalid HTTPS origin %q", origin)
+		}
+		if parsed.Path != "" && parsed.Path != "/" {
+			return fmt.Errorf("origin must not include path: %q", origin)
+		}
+	}
+	return nil
+}
+
+func validateHTTPSPublicBaseURL(publicBaseURL string) error {
+	value := strings.TrimSpace(publicBaseURL)
+	if value == "" {
+		return fmt.Errorf("production mode requires -public-base-url with HTTPS")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("production mode requires -public-base-url with HTTPS, got %q", publicBaseURL)
+	}
+	return nil
 }
 
 func envOrDefault(key string, fallback string) string {

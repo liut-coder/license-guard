@@ -523,16 +523,17 @@ Public Key 指纹
 - [x] 生产默认使用 PostgreSQL，不使用 JSON store。
 - [x] 生产模式要求显式持久化 `-key-dir`；多实例仍需部署层共享同一份 `signing-key.json` 或 key volume。
 - [x] 明确备份和恢复流程，覆盖数据库和签名密钥。
-- [ ] 生产必须使用 HTTPS。
+- [x] 生产必须使用 HTTPS。
 - [x] 收紧生产 CORS，避免 Admin UI/API 长期使用 `Access-Control-Allow-Origin: *`。
 
 已落地：
 
 - `licenseguard-server` 支持 `-cors-allowed-origins` 和 `LG_CORS_ALLOWED_ORIGINS`。
-- `licenseguard-server` 支持 `-production` 和 `LG_PRODUCTION=true`，生产模式会拒绝 JSON store、缺失 `-key-dir`、空 CORS 或通配 CORS。
-- 默认保留 `*` 兼容本地开发；生产部署模板默认使用具体 HTTPS origin。
+- `licenseguard-server` 支持 `-public-base-url`、`LG_PUBLIC_BASE_URL` 和 `LICENSEGUARD_PUBLIC_BASE_URL`，生产模式要求外部 URL 必须是 HTTPS。
+- `licenseguard-server` 支持 `-production` 和 `LG_PRODUCTION=true`，生产模式会拒绝 JSON store、缺失 `-key-dir`、空 CORS、通配 CORS、HTTP CORS origin 或非 HTTPS public base URL。
+- 默认保留 `*` 兼容本地开发；生产部署模板默认使用具体 HTTPS origin 和 HTTPS public base URL。
 - API 只对匹配 Origin 返回 `Access-Control-Allow-Origin`，非匹配 Origin 不返回放行头。
-- Docker Compose 和 systemd 模板均已接入 `LG_CORS_ALLOWED_ORIGINS` 和 `LG_PRODUCTION=true`。
+- Docker Compose 和 systemd 模板均已接入 `LG_CORS_ALLOWED_ORIGINS`、`LG_PRODUCTION=true` 和 `LICENSEGUARD_PUBLIC_BASE_URL`。
 - 新增 `docs/06-backup-restore-runbook.md`，明确 PostgreSQL、`signing-key.json`、部署配置、HTTPS 反代配置和迁移文件的备份对象、恢复顺序、恢复后验证和演练频率。
 
 验证：
@@ -542,7 +543,11 @@ Public Key 指纹
 - `TestValidateProductionConfigRequiresPostgresStore`
 - `TestValidateProductionConfigRequiresExplicitKeyDir`
 - `TestValidateProductionConfigRejectsWildcardCORS`
+- `TestValidateProductionConfigRejectsHTTPCORSOrigins`
+- `TestValidateProductionConfigRejectsHTTPPublicBaseURL`
 - `TestValidateProductionConfigAcceptsProductionSettings`
+- `TestAppOnboardingUsesConfiguredPublicBaseURL`
+- `TestIntegrationBundleDefaultsToConfiguredPublicBaseURL`
 - `scripts/production-check.sh` 校验 backup/restore runbook 存在，并包含 `pg_dump`、`pg_restore`、`signing-key.json` 和 `/v1/public-key` 验证步骤。
 
 - [x] 处理 demo admin：生产首次启动强制改密或生产模式禁用 demo seed。

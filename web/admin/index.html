@@ -2394,7 +2394,7 @@ visionflow.export</textarea></div>
       }
 
       async function renderSDK(appDetail = {}) {
-        const endpoint = `${window.location.origin}/v1`;
+        const fallbackEndpoint = `${window.location.origin}/v1`;
         const app = appDetail.app || state.selectedApp || {};
         const releases = appDetail.releases || [];
         const sdkKey = activeSDKKey(appDetail.sdk_keys || []);
@@ -2406,6 +2406,7 @@ visionflow.export</textarea></div>
         } catch {
           onboarding = deriveOnboarding(appDetail, appID);
         }
+        const endpoint = onboarding?.client_endpoint || fallbackEndpoint;
         let capabilityPolicies = [];
         try {
           const policyResp = await api(`/admin/apps/${encodeURIComponent(appID)}/capability-policies`);

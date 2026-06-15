@@ -305,6 +305,7 @@ type OnboardingStep struct {
 type OnboardingResponse struct {
 	AppID                 string           `json:"app_id"`
 	App                   App              `json:"app"`
+	ClientEndpoint        string           `json:"client_endpoint,omitempty"`
 	HasActiveSDKKey       bool             `json:"has_active_sdk_key"`
 	HasRelease            bool             `json:"has_release"`
 	HasLicense            bool             `json:"has_license"`

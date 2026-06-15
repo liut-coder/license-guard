@@ -16,9 +16,11 @@ Older hosts with the standalone Compose binary can run the same template with `d
 
 The Compose template runs `licenseguard-migrate` once before the API and stores signing keys in the `licenseguard_keys` volume. Do not delete or rotate that volume unless you intentionally invalidate issued tokens.
 
+`LICENSEGUARD_PUBLIC_BASE_URL` must be the HTTPS URL clients and operators use externally, for example `https://licenseguard.example.com`. The server uses it to generate SDK endpoints and integration bundles.
+
 `LG_CORS_ALLOWED_ORIGINS` should be a comma-separated list of concrete HTTPS origins that host the Admin UI or operator console, for example `https://licenseguard.example.com`. Use `*` only for local development.
 
-`LG_PRODUCTION=true` makes `licenseguard-server` fail fast unless it runs with PostgreSQL, an explicit persistent `-key-dir`, and concrete CORS origins. It also disables automatic demo seed data; an empty production database must already contain an admin or receive an explicit bootstrap admin through the `LG_BOOTSTRAP_ADMIN_*` variables.
+`LG_PRODUCTION=true` makes `licenseguard-server` fail fast unless it runs with PostgreSQL, an explicit persistent `-key-dir`, concrete HTTPS CORS origins, and a HTTPS `LICENSEGUARD_PUBLIC_BASE_URL`. It also disables automatic demo seed data; an empty production database must already contain an admin or receive an explicit bootstrap admin through the `LG_BOOTSTRAP_ADMIN_*` variables.
 
 ## HTTPS Reverse Proxy
 

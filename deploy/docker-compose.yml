@@ -45,6 +45,7 @@ services:
       - "-migrations-dir=/app/migrations"
       - "-cors-allowed-origins=${LG_CORS_ALLOWED_ORIGINS}"
       - "-production=${LG_PRODUCTION}"
+      - "-public-base-url=${LICENSEGUARD_PUBLIC_BASE_URL}"
     environment:
       LG_BOOTSTRAP_ADMIN_ACCOUNT: ${LG_BOOTSTRAP_ADMIN_ACCOUNT}
       LG_BOOTSTRAP_ADMIN_PASSWORD: ${LG_BOOTSTRAP_ADMIN_PASSWORD}
