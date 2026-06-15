@@ -51,6 +51,50 @@ func TestReleaseInRollout(t *testing.T) {
 	}
 }
 
+func TestDefaultCORSAllowsWildcard(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Header.Set("Origin", "https://admin.example.com")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("health status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want *", got)
+	}
+}
+
+func TestConfiguredCORSAllowsOnlyMatchingOrigin(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	server.SetCORSAllowedOrigins([]string{"https://admin.example.com", "https://ops.example.com/"})
+
+	allowedReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	allowedReq.Header.Set("Origin", "https://ops.example.com")
+	allowedRec := httptest.NewRecorder()
+	server.ServeHTTP(allowedRec, allowedReq)
+	if got := allowedRec.Header().Get("Access-Control-Allow-Origin"); got != "https://ops.example.com" {
+		t.Fatalf("allowed origin header = %q, want exact origin", got)
+	}
+	if got := allowedRec.Header().Values("Vary"); !containsString(got, "Origin") {
+		t.Fatalf("Vary headers = %#v, want Origin", got)
+	}
+
+	blockedReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	blockedReq.Header.Set("Origin", "https://evil.example.com")
+	blockedRec := httptest.NewRecorder()
+	server.ServeHTTP(blockedRec, blockedReq)
+	if got := blockedRec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("blocked origin header = %q, want empty", got)
+	}
+}
+
 func TestChallengeEndpointCleansExpiredChallenges(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -1538,6 +1582,15 @@ func hasDecision(items []CapabilityDecision, capability string, allowed bool, ef
 func hasFinding(items []DiagnosticFinding, scope string, code string) bool {
 	for _, item := range items {
 		if item.Scope == scope && item.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
 			return true
 		}
 	}

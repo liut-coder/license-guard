@@ -497,7 +497,20 @@ Public Key 指纹
 - [ ] 多实例部署共享同一份 `signing-key.json` 或持久化 `-key-dir`。
 - [ ] 明确备份和恢复流程，覆盖数据库和签名密钥。
 - [ ] 生产必须使用 HTTPS。
-- [ ] 收紧生产 CORS，避免 Admin UI/API 长期使用 `Access-Control-Allow-Origin: *`。
+- [x] 收紧生产 CORS，避免 Admin UI/API 长期使用 `Access-Control-Allow-Origin: *`。
+
+已落地：
+
+- `licenseguard-server` 支持 `-cors-allowed-origins` 和 `LG_CORS_ALLOWED_ORIGINS`。
+- 默认保留 `*` 兼容本地开发；生产部署模板默认使用具体 HTTPS origin。
+- API 只对匹配 Origin 返回 `Access-Control-Allow-Origin`，非匹配 Origin 不返回放行头。
+- Docker Compose 和 systemd 模板均已接入 `LG_CORS_ALLOWED_ORIGINS`。
+
+验证：
+
+- `TestDefaultCORSAllowsWildcard`
+- `TestConfiguredCORSAllowsOnlyMatchingOrigin`
+
 - [ ] 处理 demo admin：生产首次启动强制改密或生产模式禁用 demo seed。
 - [ ] Admin 登录、challenge、activate、verify 增加限流或失败延迟。
 - [x] 周期清理过期 challenge，避免内存 map 长期增长。
@@ -700,7 +713,7 @@ hash 字段缺失
 - [x] `mandatory=true` 时客户端收到 `update.required=true`。
 - [ ] Admin 登录、activate、verify 的限流或失败延迟生效。
 - [x] 过期 challenge 会被清理。
-- [ ] 生产 CORS/HTTPS 配置有文档和模板。
+- [x] 生产 CORS/HTTPS 配置有文档和模板。
 
 ### P2 验收
 

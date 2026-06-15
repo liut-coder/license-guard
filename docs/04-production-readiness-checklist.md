@@ -43,6 +43,7 @@ bash scripts/production-check.sh
 ## 4. 网络与后台安全
 
 - API 和 Admin UI 对外只通过 HTTPS 暴露。
+- `LG_CORS_ALLOWED_ORIGINS` / `-cors-allowed-origins` 必须配置为具体 HTTPS Origin；生产不得使用 `*`。
 - 后台入口配置 IP 白名单、MFA 或等效访问控制。
 - 首次生产启动后立即替换 demo 管理员凭据，确认默认密码不可登录。
 - 敏感操作确认、审计保留天数、token TTL、offline grace、默认设备数和默认授权天数按租户策略配置。

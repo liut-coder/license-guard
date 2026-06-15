@@ -33,13 +33,14 @@ const (
 )
 
 type Server struct {
-	mu            sync.Mutex
-	data          Data
-	store         Store
-	publicKey     ed25519.PublicKey
-	privateKey    ed25519.PrivateKey
-	challenges    map[string]Challenge
-	adminSessions map[string]AdminSession
+	mu                 sync.Mutex
+	data               Data
+	store              Store
+	publicKey          ed25519.PublicKey
+	privateKey         ed25519.PrivateKey
+	challenges         map[string]Challenge
+	adminSessions      map[string]AdminSession
+	corsAllowedOrigins []string
 }
 
 type AdminSession struct {
@@ -68,11 +69,12 @@ func NewServerWithStore(keyDir string, store Store) (*Server, error) {
 	}
 
 	s := &Server{
-		store:         store,
-		publicKey:     pub,
-		privateKey:    priv,
-		challenges:    map[string]Challenge{},
-		adminSessions: map[string]AdminSession{},
+		store:              store,
+		publicKey:          pub,
+		privateKey:         priv,
+		challenges:         map[string]Challenge{},
+		adminSessions:      map[string]AdminSession{},
+		corsAllowedOrigins: []string{"*"},
 	}
 	if err := s.loadOrSeed(); err != nil {
 		return nil, err
@@ -80,8 +82,12 @@ func NewServerWithStore(keyDir string, store Store) (*Server, error) {
 	return s, nil
 }
 
+func (s *Server) SetCORSAllowedOrigins(origins []string) {
+	s.corsAllowedOrigins = normalizeCORSAllowedOrigins(origins)
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	setCORS(w)
+	s.setCORS(w, r)
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -3508,10 +3514,45 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func setCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+func (s *Server) setCORS(w http.ResponseWriter, r *http.Request) {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	allowedOrigins := s.corsAllowedOrigins
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = []string{"*"}
+	}
+	for _, allowed := range allowedOrigins {
+		if allowed == "*" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			break
+		}
+		if origin != "" && origin == allowed {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+			break
+		}
+	}
 	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-LG-App-Id, X-LG-SDK-Version, X-LG-Request-Id")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS")
+}
+
+func normalizeCORSAllowedOrigins(origins []string) []string {
+	normalized := []string{}
+	for _, origin := range origins {
+		for _, part := range strings.Split(origin, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if part == "*" {
+				return []string{"*"}
+			}
+			normalized = append(normalized, strings.TrimRight(part, "/"))
+		}
+	}
+	if len(normalized) == 0 {
+		return []string{"*"}
+	}
+	return normalized
 }
 
 func hashString(value string) string {

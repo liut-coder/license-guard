@@ -20,6 +20,7 @@ func main() {
 	databaseURL := flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection URL when -store=postgres")
 	autoMigrate := flag.Bool("auto-migrate", false, "apply PostgreSQL schema migrations before starting")
 	migrationsDir := flag.String("migrations-dir", "./migrations", "directory containing PostgreSQL migration SQL files")
+	corsAllowedOrigins := flag.String("cors-allowed-origins", envOrDefault("LG_CORS_ALLOWED_ORIGINS", "*"), "comma-separated CORS allowed origins; use concrete HTTPS origins in production")
 	flag.Parse()
 
 	resolvedKeyDir := *keyDir
@@ -35,6 +36,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("init license guard server: %v", err)
 	}
+	api.SetCORSAllowedOrigins(strings.Split(*corsAllowedOrigins, ","))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/admin-ui", func(w http.ResponseWriter, r *http.Request) {
