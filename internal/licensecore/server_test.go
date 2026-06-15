@@ -568,6 +568,81 @@ func TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies(t *testing.T) {
 	}
 }
 
+func TestVisionFlowLicenseDeviceLimit(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+
+	appBody := []byte(`{"app_key":"app_visionflow_windows_prod","name":"VisionFlow Windows","platform":"windows","version":"0.1.0"}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/apps", bytes.NewReader(appBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("app create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	licenseBody := []byte(`{
+		"app_id":"app_visionflow_windows_prod",
+		"plan_name":"VisionFlow Dev",
+		"owner_ref":"visionflow-device-limit",
+		"max_devices":1,
+		"entitlements":["visionflow.automation"]
+	}`)
+	req = httptest.NewRequest(http.MethodPost, "/admin/licenses", bytes.NewReader(licenseBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("license create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var licenseResp struct {
+		License    License `json:"license"`
+		LicenseKey string  `json:"license_key"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &licenseResp); err != nil {
+		t.Fatalf("decode license response: %v", err)
+	}
+	if licenseResp.License.AppID != "app_visionflow_windows_prod" || licenseResp.License.MaxDevices != 1 || licenseResp.LicenseKey == "" {
+		t.Fatalf("unexpected VisionFlow license response: %#v", licenseResp)
+	}
+
+	first := activateLicenseForApp(t, server, "app_visionflow_windows_prod", licenseResp.LicenseKey, "visionflow-device-1", "0.1.0", nil)
+	if !first.Allowed || first.LicenseToken == "" {
+		t.Fatalf("first activation = %#v, want allowed token", first)
+	}
+	second := activateLicenseForApp(t, server, "app_visionflow_windows_prod", licenseResp.LicenseKey, "visionflow-device-2", "0.1.0", nil)
+	if second.Allowed || second.Code != "DEVICE_LIMIT_EXCEEDED" {
+		t.Fatalf("second activation = %#v, want DEVICE_LIMIT_EXCEEDED", second)
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if server.findAppLocked("app_visionflow_windows_prod") == nil {
+		t.Fatal("VisionFlow app was not persisted")
+	}
+	if server.findReleaseLocked("app_visionflow_windows_prod", "windows", "0.1.0") == nil {
+		t.Fatal("VisionFlow release was not persisted")
+	}
+	if server.findLicenseByIDLocked(licenseResp.License.ID) == nil {
+		t.Fatal("VisionFlow license was not persisted")
+	}
+	activation := server.latestActivationForLicenseLocked(licenseResp.License.ID)
+	if activation == nil || activation.ActivationStatus != "active" {
+		t.Fatalf("VisionFlow activation = %#v, want active", activation)
+	}
+	if server.findDeviceByIDLocked(activation.DeviceID) == nil {
+		t.Fatalf("VisionFlow device %q was not persisted", activation.DeviceID)
+	}
+	if !hasRiskEvent(server.data.RiskEvents, "device_limit_exceeded") {
+		t.Fatalf("device_limit_exceeded risk event not found in %#v", server.data.RiskEvents)
+	}
+}
+
 func TestCapabilityPolicyDeniesMissingEntitlementAndSignsVerifyBundle(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -936,11 +1011,16 @@ func TestIntegrationBundleOmitsSecretsAndContainsSkeleton(t *testing.T) {
 
 func activateDemoLicense(t *testing.T, server *Server, installID string, integrityOverrides map[string]any) VerifyResponse {
 	t.Helper()
+	return activateLicenseForApp(t, server, DemoAppID, DemoLicenseKey, installID, "1.4.2", integrityOverrides)
+}
+
+func activateLicenseForApp(t *testing.T, server *Server, appID string, licenseKey string, installID string, appVersion string, integrityOverrides map[string]any) VerifyResponse {
+	t.Helper()
 	challengeBody, err := json.Marshal(map[string]any{
-		"app_id":      DemoAppID,
+		"app_id":      appID,
 		"platform":    "windows",
 		"install_id":  installID,
-		"app_version": "1.4.2",
+		"app_version": appVersion,
 	})
 	if err != nil {
 		t.Fatalf("marshal challenge body: %v", err)
@@ -961,17 +1041,19 @@ func activateDemoLicense(t *testing.T, server *Server, installID string, integri
 	}
 
 	integrity := map[string]any{
-		"app_version":       "1.4.2",
-		"main_binary_hash":  DemoBinaryHash,
-		"signer_thumbprint": DemoSigner,
+		"app_version": appVersion,
+	}
+	if appID == DemoAppID {
+		integrity["main_binary_hash"] = DemoBinaryHash
+		integrity["signer_thumbprint"] = DemoSigner
 	}
 	for key, value := range integrityOverrides {
 		integrity[key] = value
 	}
 	activateBody, err := json.Marshal(map[string]any{
-		"app_id":       DemoAppID,
+		"app_id":       appID,
 		"platform":     "windows",
-		"license_key":  DemoLicenseKey,
+		"license_key":  licenseKey,
 		"challenge_id": challengeResp.ChallengeID,
 		"nonce":        challengeResp.Nonce,
 		"device": map[string]any{

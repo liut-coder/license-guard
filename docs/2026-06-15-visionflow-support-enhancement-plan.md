@@ -279,7 +279,7 @@ module license-guard
 
 VisionFlow 首版用本地 `replace` 接入；License Guard 本阶段不强制改 module path，避免扩大迁移影响。
 
-- [ ] 在 Admin UI 或初始化脚本中准备 VisionFlow 专用 App。
+- [x] 在 Admin UI 或初始化脚本中准备 VisionFlow 专用 App。
 
 建议默认值：
 
@@ -289,11 +289,25 @@ Platform: windows
 Version: 0.1.0
 Entitlements:
   visionflow.automation
-  visionflow.asset_mapping
-  visionflow.advanced
+  visionflow.batch
+  visionflow.export
+  visionflow.plugin
+  visionflow.update
 ```
 
-- [ ] 创建首个 VisionFlow License，并验证设备数限制。
+已落地：
+
+- `licenseguardctl visionflow bootstrap` 可创建或复用 `app_visionflow_windows_prod`、补齐 Release、补齐默认 capability policy，并签发 VisionFlow 开发 License。
+- 通过 Admin API 创建 `app_visionflow_windows_prod` 时会同步创建初始 Release。
+- 验证：`TestVisionFlowBootstrapCreatesUsableEnv`、`TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies`。
+
+- [x] 创建首个 VisionFlow License，并验证设备数限制。
+
+已落地：
+
+- Admin API 可为 `app_visionflow_windows_prod` 签发包含 VisionFlow entitlement 的 License。
+- `max_devices=1` 时第一台设备激活成功，第二台设备返回 `DEVICE_LIMIT_EXCEEDED`，并记录 `device_limit_exceeded` 风险事件。
+- 验证：`TestVisionFlowLicenseDeviceLimit`。
 - [x] 确认 `/v1/public-key` 返回值可用于客户端本地验签。
 
 ### P1：能力策略可视化
@@ -619,13 +633,13 @@ hash 字段缺失
 
 ### P0 验收
 
-- [ ] `go test ./...` 通过。
+- [x] `go test ./...` 通过。
 - [ ] Windows SDK `TestCachedAuthorizationAllowsSignedOfflineGrace` 通过。
 - [ ] `Activate` 成功后 token 可保存并重新读取。
 - [ ] 本地 token 被篡改后验签失败。
 - [ ] VisionFlow 能通过本地 `replace` import SDK 并编译。
-- [ ] License Guard 后台存在 VisionFlow App、Release、License。
-- [ ] VisionFlow 使用有效 license 激活后，后台出现 Device 和 Activation。
+- [x] License Guard 后台存在 VisionFlow App、Release、License。
+- [x] VisionFlow 使用有效 license 激活后，后台出现 Device 和 Activation。
 - [x] `licenseguardctl visionflow bootstrap` 一条命令能生成 VisionFlow 可用本地试用配置。
 - [x] 默认 VisionFlow capability policy 存在，且未知 capability 不会被默认放行。
 - [x] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
