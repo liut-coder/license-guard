@@ -512,7 +512,24 @@ Public Key 指纹
 - `TestConfiguredCORSAllowsOnlyMatchingOrigin`
 
 - [ ] 处理 demo admin：生产首次启动强制改密或生产模式禁用 demo seed。
-- [ ] Admin 登录、challenge、activate、verify 增加限流或失败延迟。
+- [x] Admin 登录、challenge、activate、verify 增加限流或失败延迟。
+
+已落地：服务端维护内存失败窗口，默认同一来源/账号或同一来源/设备安装在 1 分钟内允许 5 次失败；超过后返回 HTTP 429 和 `RATE_LIMITED`。成功请求会清理对应失败计数。
+
+覆盖范围：
+
+- Admin 登录错误密码。
+- `/v1/challenge` 未知 App 或非法参数。
+- `/v1/activate` 无效 License。
+- `/v1/verify` 无效 token。
+
+验证：
+
+- `TestAdminLoginRateLimitsFailedAttempts`
+- `TestChallengeRateLimitsUnknownApp`
+- `TestActivateRateLimitsInvalidLicenseAttempts`
+- `TestVerifyRateLimitsInvalidTokenAttempts`
+
 - [x] 周期清理过期 challenge，避免内存 map 长期增长。
 
 已落地：`/v1/challenge` 创建新 challenge 和 activate/verify 校验 challenge 时会惰性清理过期 challenge，避免未使用 challenge 长期留在内存 map。
@@ -723,7 +740,7 @@ hash 字段缺失
 - [x] Release schema/发布脚本能分别登记受保护 DB hash、assets hash、workflow hash。
 - [x] 客户端 verify 返回 `update.available` 时字段完整。
 - [x] `mandatory=true` 时客户端收到 `update.required=true`。
-- [ ] Admin 登录、activate、verify 的限流或失败延迟生效。
+- [x] Admin 登录、activate、verify 的限流或失败延迟生效。
 - [x] 过期 challenge 会被清理。
 - [x] 生产 CORS/HTTPS 配置有文档和模板。
 

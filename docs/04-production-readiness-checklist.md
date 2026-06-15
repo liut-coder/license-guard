@@ -45,6 +45,7 @@ bash scripts/production-check.sh
 - API 和 Admin UI 对外只通过 HTTPS 暴露。
 - `LG_CORS_ALLOWED_ORIGINS` / `-cors-allowed-origins` 必须配置为具体 HTTPS Origin；生产不得使用 `*`。
 - 后台入口配置 IP 白名单、MFA 或等效访问控制。
+- Admin 登录、challenge、activate、verify 的失败限流必须开启并经过演练，连续失败应返回 `RATE_LIMITED`。
 - 首次生产启动后立即替换 demo 管理员凭据，确认默认密码不可登录。
 - 敏感操作确认、审计保留天数、token TTL、offline grace、默认设备数和默认授权天数按租户策略配置。
 - 日志不得记录 `DATABASE_URL` 明文密码、license key 全量、SDK secret、私钥或 `secret_hash`。

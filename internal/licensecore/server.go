@@ -41,11 +41,19 @@ type Server struct {
 	challenges         map[string]Challenge
 	adminSessions      map[string]AdminSession
 	corsAllowedOrigins []string
+	rateLimits         map[string]rateLimitState
+	rateLimitWindow    time.Duration
+	rateLimitFailures  int
 }
 
 type AdminSession struct {
 	AdminID   string
 	ExpiresAt time.Time
+}
+
+type rateLimitState struct {
+	WindowStart time.Time
+	Failures    int
 }
 
 func NewServer(dataDir string) (*Server, error) {
@@ -75,6 +83,9 @@ func NewServerWithStore(keyDir string, store Store) (*Server, error) {
 		challenges:         map[string]Challenge{},
 		adminSessions:      map[string]AdminSession{},
 		corsAllowedOrigins: []string{"*"},
+		rateLimits:         map[string]rateLimitState{},
+		rateLimitWindow:    time.Minute,
+		rateLimitFailures:  5,
 	}
 	if err := s.loadOrSeed(); err != nil {
 		return nil, err
@@ -84,6 +95,14 @@ func NewServerWithStore(keyDir string, store Store) (*Server, error) {
 
 func (s *Server) SetCORSAllowedOrigins(origins []string) {
 	s.corsAllowedOrigins = normalizeCORSAllowedOrigins(origins)
+}
+
+func (s *Server) SetFailureRateLimit(maxFailures int, window time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rateLimitFailures = maxFailures
+	s.rateLimitWindow = window
+	s.rateLimits = map[string]rateLimitState{}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -250,7 +269,14 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	account := strings.ToLower(strings.TrimSpace(req.Account))
+	rateKey := rateLimitKey("admin_login", account, clientAddr(r))
+	now := time.Now()
 	s.mu.Lock()
+	if s.isRateLimitedLocked(rateKey, now) {
+		s.mu.Unlock()
+		writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many failed attempts, try again later")
+		return
+	}
 	admin := s.findAdminByAccountLocked(account)
 	var adminCopy Admin
 	if admin != nil {
@@ -259,6 +285,9 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	if admin == nil || adminCopy.Status != "active" || bcrypt.CompareHashAndPassword([]byte(adminCopy.PasswordHash), []byte(req.Password)) != nil {
+		s.mu.Lock()
+		s.recordRateLimitFailureLocked(rateKey, time.Now())
+		s.mu.Unlock()
 		writeError(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "账号或密码错误")
 		return
 	}
@@ -266,6 +295,7 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 	token := "adm_" + randomString(32)
 	expiresAt := time.Now().Add(12 * time.Hour)
 	s.mu.Lock()
+	s.resetRateLimitLocked(rateKey)
 	s.adminSessions[token] = AdminSession{AdminID: adminCopy.ID, ExpiresAt: expiresAt}
 	s.auditLocked(adminCopy.ID, "admin.login", "admin", adminCopy.ID, r, nil)
 	s.mu.Unlock()
@@ -1131,12 +1161,23 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
+	rateKey := rateLimitKey("challenge", req.AppID, req.InstallID, clientAddr(r))
+	now := time.Now()
+	s.mu.Lock()
+	if s.isRateLimitedLocked(rateKey, now) {
+		s.mu.Unlock()
+		writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many failed attempts, try again later")
+		return
+	}
+	s.mu.Unlock()
 	if req.AppID == "" || req.InstallID == "" {
+		s.mu.Lock()
+		s.recordRateLimitFailureLocked(rateKey, time.Now())
+		s.mu.Unlock()
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "app_id and install_id are required")
 		return
 	}
 
-	now := time.Now()
 	challenge := Challenge{
 		ID:        newID("chg"),
 		Nonce:     randomString(32),
@@ -1149,10 +1190,12 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.cleanupExpiredChallengesLocked(now)
 	if s.findAppLocked(req.AppID) == nil {
+		s.recordRateLimitFailureLocked(rateKey, time.Now())
 		s.mu.Unlock()
 		writeError(w, http.StatusNotFound, "APP_NOT_FOUND", "app not found")
 		return
 	}
+	s.resetRateLimitLocked(rateKey)
 	s.challenges[challenge.ID] = challenge
 	s.mu.Unlock()
 
@@ -1452,7 +1495,23 @@ type authorizationDiagnosticInput struct {
 }
 
 func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Request, input clientVerificationInput) {
+	rateKey := clientVerificationRateLimitKey(input, r)
+	recordFailure := func() {
+		s.recordRateLimitFailureLocked(rateKey, time.Now())
+	}
+	writeVerificationDenied := func(code string, message string, risk RiskResult) {
+		recordFailure()
+		writeDenied(w, code, message, risk)
+	}
 	if input.AppID == "" || input.ChallengeID == "" || input.Nonce == "" || input.Device.InstallID == "" || input.Device.Fingerprint == "" {
+		s.mu.Lock()
+		if s.isRateLimitedLocked(rateKey, time.Now()) {
+			s.mu.Unlock()
+			writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many failed attempts, try again later")
+			return
+		}
+		s.recordRateLimitFailureLocked(rateKey, time.Now())
+		s.mu.Unlock()
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "app_id, challenge, nonce and device identifiers are required")
 		return
 	}
@@ -1460,13 +1519,18 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.isRateLimitedLocked(rateKey, time.Now()) {
+		writeError(w, http.StatusTooManyRequests, "RATE_LIMITED", "too many failed attempts, try again later")
+		return
+	}
+
 	if err := s.validateChallengeLocked(input.AppID, input.Device.InstallID, input.ChallengeID, input.Nonce); err != nil {
-		writeDenied(w, "CHALLENGE_INVALID", err.Error(), RiskResult{Level: "medium", Score: 50, Actions: []string{"deny"}})
+		writeVerificationDenied("CHALLENGE_INVALID", err.Error(), RiskResult{Level: "medium", Score: 50, Actions: []string{"deny"}})
 		return
 	}
 	app := s.findAppLocked(input.AppID)
 	if app == nil || app.Status != "active" {
-		writeDenied(w, "APP_NOT_ACTIVE", "应用不存在或已停用", RiskResult{Level: "high", Score: 90, Actions: []string{"deny"}})
+		writeVerificationDenied("APP_NOT_ACTIVE", "应用不存在或已停用", RiskResult{Level: "high", Score: 90, Actions: []string{"deny"}})
 		return
 	}
 
@@ -1477,34 +1541,34 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 	} else if input.LicenseToken != "" {
 		claims, err := VerifyLicenseToken(s.publicKey, input.LicenseToken, true)
 		if err != nil {
-			writeDenied(w, "INVALID_TOKEN", "授权 token 无效", RiskResult{Level: "medium", Score: 55, Actions: []string{"deny"}})
+			writeVerificationDenied("INVALID_TOKEN", "授权 token 无效", RiskResult{Level: "medium", Score: 55, Actions: []string{"deny"}})
 			return
 		}
 		tokenClaims = claims
 		lic = s.findLicenseByIDLocked(claims.LicenseID)
 	} else {
-		writeDenied(w, "LICENSE_REQUIRED", "需要 license_key 或 license_token", RiskResult{Level: "medium", Score: 55, Actions: []string{"deny"}})
+		writeVerificationDenied("LICENSE_REQUIRED", "需要 license_key 或 license_token", RiskResult{Level: "medium", Score: 55, Actions: []string{"deny"}})
 		return
 	}
 
 	if lic == nil || lic.AppID != app.AppKey {
-		writeDenied(w, "INVALID_LICENSE", "授权不存在或不属于当前应用", RiskResult{Level: "high", Score: 82, Actions: []string{"deny"}})
+		writeVerificationDenied("INVALID_LICENSE", "授权不存在或不属于当前应用", RiskResult{Level: "high", Score: 82, Actions: []string{"deny"}})
 		return
 	}
 	if lic.Status != "active" {
-		writeDenied(w, "LICENSE_"+strings.ToUpper(lic.Status), "授权不可用", RiskResult{Level: "high", Score: 85, Actions: []string{"deny"}})
+		writeVerificationDenied("LICENSE_"+strings.ToUpper(lic.Status), "授权不可用", RiskResult{Level: "high", Score: 85, Actions: []string{"deny"}})
 		return
 	}
 	if time.Now().After(lic.ExpiresAt) {
 		lic.Status = "expired"
 		_ = s.saveLocked()
-		writeDenied(w, "LICENSE_EXPIRED", "授权已过期", RiskResult{Level: "medium", Score: 65, Actions: []string{"deny"}})
+		writeVerificationDenied("LICENSE_EXPIRED", "授权已过期", RiskResult{Level: "medium", Score: 65, Actions: []string{"deny"}})
 		return
 	}
 	if tokenClaims != nil && tokenClaims.AppID != app.AppKey {
 		s.addRiskEventLocked(app.AppKey, "", lic.ID, "token_app_mismatch", "high", "deny", "授权 token 不属于当前应用", map[string]any{"token_app_id": tokenClaims.AppID})
 		_ = s.saveLocked()
-		writeDenied(w, "TOKEN_APP_MISMATCH", "授权 token 不属于当前应用", RiskResult{Level: "high", Score: 92, Actions: []string{"deny"}})
+		writeVerificationDenied("TOKEN_APP_MISMATCH", "授权 token 不属于当前应用", RiskResult{Level: "high", Score: 92, Actions: []string{"deny"}})
 		return
 	}
 
@@ -1512,13 +1576,13 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 	if device.Status == "blocked" {
 		s.addRiskEventLocked(app.AppKey, device.ID, lic.ID, "device_blocked", "high", "deny", "设备已被后台封禁", nil)
 		_ = s.saveLocked()
-		writeDenied(w, "DEVICE_BLOCKED", "设备已封禁", RiskResult{Level: "high", Score: 90, Actions: []string{"deny"}})
+		writeVerificationDenied("DEVICE_BLOCKED", "设备已封禁", RiskResult{Level: "high", Score: 90, Actions: []string{"deny"}})
 		return
 	}
 	if tokenClaims != nil && tokenClaims.DeviceID != device.ID {
 		s.addRiskEventLocked(app.AppKey, device.ID, lic.ID, "token_device_mismatch", "high", "deny", "授权 token 与当前设备不匹配", map[string]any{"token_device_id": tokenClaims.DeviceID})
 		_ = s.saveLocked()
-		writeDenied(w, "TOKEN_DEVICE_MISMATCH", "授权 token 与当前设备不匹配", RiskResult{Level: "high", Score: 92, Actions: []string{"deny"}})
+		writeVerificationDenied("TOKEN_DEVICE_MISMATCH", "授权 token 与当前设备不匹配", RiskResult{Level: "high", Score: 92, Actions: []string{"deny"}})
 		return
 	}
 
@@ -1526,7 +1590,7 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 	if tokenClaims != nil && (activation == nil || activation.ActivationStatus != "active") {
 		s.addRiskEventLocked(app.AppKey, device.ID, lic.ID, "token_activation_inactive", "medium", "deny", "授权 token 对应的激活已停用", nil)
 		_ = s.saveLocked()
-		writeDenied(w, "TOKEN_DEACTIVATED", "授权 token 已停用，请重新激活", RiskResult{Level: "medium", Score: 60, Actions: []string{"deny"}})
+		writeVerificationDenied("TOKEN_DEACTIVATED", "授权 token 已停用，请重新激活", RiskResult{Level: "medium", Score: 60, Actions: []string{"deny"}})
 		return
 	}
 	if activation == nil {
@@ -1534,7 +1598,7 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 		if activeCount >= lic.MaxDevices {
 			s.addRiskEventLocked(app.AppKey, device.ID, lic.ID, "device_limit_exceeded", "medium", "deny", "授权绑定设备数已达到上限", map[string]any{"max_devices": lic.MaxDevices})
 			_ = s.saveLocked()
-			writeDenied(w, "DEVICE_LIMIT_EXCEEDED", "授权绑定设备数已达到上限", RiskResult{Level: "medium", Score: 58, Actions: []string{"review"}})
+			writeVerificationDenied("DEVICE_LIMIT_EXCEEDED", "授权绑定设备数已达到上限", RiskResult{Level: "medium", Score: 58, Actions: []string{"review"}})
 			return
 		}
 		now := time.Now()
@@ -1560,6 +1624,7 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 
 	if deny {
 		_ = s.saveLocked()
+		recordFailure()
 		writeDenied(w, "INTEGRITY_FAILED", "完整性验证失败", risk)
 		return
 	}
@@ -1596,6 +1661,7 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "SAVE_FAILED", err.Error())
 		return
 	}
+	s.resetRateLimitLocked(rateKey)
 
 	writeJSON(w, http.StatusOK, VerifyResponse{
 		Allowed:           true,
@@ -3553,6 +3619,61 @@ func normalizeCORSAllowedOrigins(origins []string) []string {
 		return []string{"*"}
 	}
 	return normalized
+}
+
+func (s *Server) isRateLimitedLocked(key string, now time.Time) bool {
+	if s.rateLimitFailures <= 0 || s.rateLimitWindow <= 0 {
+		return false
+	}
+	state, ok := s.rateLimits[key]
+	if !ok || now.Sub(state.WindowStart) >= s.rateLimitWindow {
+		return false
+	}
+	return state.Failures >= s.rateLimitFailures
+}
+
+func (s *Server) recordRateLimitFailureLocked(key string, now time.Time) {
+	if s.rateLimitFailures <= 0 || s.rateLimitWindow <= 0 {
+		return
+	}
+	state, ok := s.rateLimits[key]
+	if !ok || now.Sub(state.WindowStart) >= s.rateLimitWindow {
+		state = rateLimitState{WindowStart: now}
+	}
+	state.Failures++
+	s.rateLimits[key] = state
+}
+
+func (s *Server) resetRateLimitLocked(key string) {
+	delete(s.rateLimits, key)
+}
+
+func clientVerificationRateLimitKey(input clientVerificationInput, r *http.Request) string {
+	endpoint := "verify"
+	if input.IsActivation {
+		endpoint = "activate"
+	}
+	return rateLimitKey(endpoint, input.AppID, input.Device.InstallID, clientAddr(r))
+}
+
+func rateLimitKey(parts ...string) string {
+	cleaned := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.ToLower(strings.TrimSpace(part))
+		if part == "" {
+			part = "-"
+		}
+		cleaned = append(cleaned, part)
+	}
+	return strings.Join(cleaned, "|")
+}
+
+func clientAddr(r *http.Request) string {
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && host != "" {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
 }
 
 func hashString(value string) string {

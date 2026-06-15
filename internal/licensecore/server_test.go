@@ -95,6 +95,98 @@ func TestConfiguredCORSAllowsOnlyMatchingOrigin(t *testing.T) {
 	}
 }
 
+func TestAdminLoginRateLimitsFailedAttempts(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	server.SetFailureRateLimit(2, time.Minute)
+
+	for i := 0; i < 2; i++ {
+		rec := postJSONRecorder(t, server, "/admin/login", map[string]any{
+			"account":  DemoAdminAccount,
+			"password": "wrong-password",
+		})
+		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), "INVALID_CREDENTIALS") {
+			t.Fatalf("login attempt %d status/body = %d/%s, want invalid credentials", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	rec := postJSONRecorder(t, server, "/admin/login", map[string]any{
+		"account":  DemoAdminAccount,
+		"password": "wrong-password",
+	})
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "RATE_LIMITED") {
+		t.Fatalf("rate-limited login status/body = %d/%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestChallengeRateLimitsUnknownApp(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	server.SetFailureRateLimit(2, time.Minute)
+
+	for i := 0; i < 2; i++ {
+		rec := postJSONRecorder(t, server, "/v1/challenge", map[string]any{
+			"app_id":      "missing-app",
+			"platform":    "windows",
+			"install_id":  "rate-limit-install",
+			"app_version": "1.4.2",
+		})
+		if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "APP_NOT_FOUND") {
+			t.Fatalf("challenge attempt %d status/body = %d/%s, want app not found", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	rec := postJSONRecorder(t, server, "/v1/challenge", map[string]any{
+		"app_id":      "missing-app",
+		"platform":    "windows",
+		"install_id":  "rate-limit-install",
+		"app_version": "1.4.2",
+	})
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "RATE_LIMITED") {
+		t.Fatalf("rate-limited challenge status/body = %d/%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestActivateRateLimitsInvalidLicenseAttempts(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	server.SetFailureRateLimit(2, time.Minute)
+
+	for i := 0; i < 2; i++ {
+		rec := activateInvalidLicenseRecorder(t, server, "rate-limit-activate-install")
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "INVALID_LICENSE") {
+			t.Fatalf("activate attempt %d status/body = %d/%s, want invalid license", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	rec := activateInvalidLicenseRecorder(t, server, "rate-limit-activate-install")
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "RATE_LIMITED") {
+		t.Fatalf("rate-limited activate status/body = %d/%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestVerifyRateLimitsInvalidTokenAttempts(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	server.SetFailureRateLimit(2, time.Minute)
+
+	for i := 0; i < 2; i++ {
+		rec := verifyInvalidTokenRecorder(t, server, "rate-limit-verify-install")
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "INVALID_TOKEN") {
+			t.Fatalf("verify attempt %d status/body = %d/%s, want invalid token", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	rec := verifyInvalidTokenRecorder(t, server, "rate-limit-verify-install")
+	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), "RATE_LIMITED") {
+		t.Fatalf("rate-limited verify status/body = %d/%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestChallengeEndpointCleansExpiredChallenges(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -1391,6 +1483,91 @@ func TestIntegrationBundleOmitsSecretsAndContainsSkeleton(t *testing.T) {
 func activateDemoLicense(t *testing.T, server *Server, installID string, integrityOverrides map[string]any) VerifyResponse {
 	t.Helper()
 	return activateLicenseForApp(t, server, DemoAppID, DemoLicenseKey, installID, "1.4.2", integrityOverrides)
+}
+
+func postJSONRecorder(t *testing.T, server *Server, path string, payload any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	return rec
+}
+
+func challengeForInstall(t *testing.T, server *Server, installID string) struct {
+	ChallengeID string `json:"challenge_id"`
+	Nonce       string `json:"nonce"`
+} {
+	t.Helper()
+	rec := postJSONRecorder(t, server, "/v1/challenge", map[string]any{
+		"app_id":      DemoAppID,
+		"platform":    "windows",
+		"install_id":  installID,
+		"app_version": "1.4.2",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("challenge status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var challengeResp struct {
+		ChallengeID string `json:"challenge_id"`
+		Nonce       string `json:"nonce"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &challengeResp); err != nil {
+		t.Fatalf("decode challenge response: %v", err)
+	}
+	return challengeResp
+}
+
+func activateInvalidLicenseRecorder(t *testing.T, server *Server, installID string) *httptest.ResponseRecorder {
+	t.Helper()
+	challenge := challengeForInstall(t, server, installID)
+	return postJSONRecorder(t, server, "/v1/activate", map[string]any{
+		"app_id":       DemoAppID,
+		"platform":     "windows",
+		"license_key":  "LG-INVALID-RATE-LIMIT",
+		"challenge_id": challenge.ChallengeID,
+		"nonce":        challenge.Nonce,
+		"device": map[string]any{
+			"install_id":        installID,
+			"fingerprint":       installID + "-fingerprint",
+			"os":                "windows",
+			"os_version":        "Windows 11",
+			"machine_name_hash": installID + "-machine",
+		},
+		"integrity": map[string]any{
+			"app_version":       "1.4.2",
+			"main_binary_hash":  DemoBinaryHash,
+			"signer_thumbprint": DemoSigner,
+		},
+	})
+}
+
+func verifyInvalidTokenRecorder(t *testing.T, server *Server, installID string) *httptest.ResponseRecorder {
+	t.Helper()
+	challenge := challengeForInstall(t, server, installID)
+	return postJSONRecorder(t, server, "/v1/verify", map[string]any{
+		"app_id":        DemoAppID,
+		"platform":      "windows",
+		"license_token": "invalid-token",
+		"challenge_id":  challenge.ChallengeID,
+		"nonce":         challenge.Nonce,
+		"device": map[string]any{
+			"install_id":        installID,
+			"fingerprint":       installID + "-fingerprint",
+			"os":                "windows",
+			"os_version":        "Windows 11",
+			"machine_name_hash": installID + "-machine",
+		},
+		"integrity": map[string]any{
+			"app_version":       "1.4.2",
+			"main_binary_hash":  DemoBinaryHash,
+			"signer_thumbprint": DemoSigner,
+		},
+	})
 }
 
 func activateLicenseForApp(t *testing.T, server *Server, appID string, licenseKey string, installID string, appVersion string, integrityOverrides map[string]any) VerifyResponse {
