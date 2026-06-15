@@ -27,13 +27,14 @@ type LicenseTokenClaims struct {
 }
 
 type CachedAuthorization struct {
-	Allowed           bool                `json:"allowed"`
-	RequiresOnline    bool                `json:"requires_online"`
-	InOfflineGrace    bool                `json:"in_offline_grace"`
-	ExpiresAt         *time.Time          `json:"expires_at,omitempty"`
-	OfflineGraceUntil *time.Time          `json:"offline_grace_until,omitempty"`
-	Entitlements      []string            `json:"entitlements,omitempty"`
-	Claims            *LicenseTokenClaims `json:"claims,omitempty"`
+	Allowed           bool                          `json:"allowed"`
+	RequiresOnline    bool                          `json:"requires_online"`
+	InOfflineGrace    bool                          `json:"in_offline_grace"`
+	ExpiresAt         *time.Time                    `json:"expires_at,omitempty"`
+	OfflineGraceUntil *time.Time                    `json:"offline_grace_until,omitempty"`
+	Entitlements      []string                      `json:"entitlements,omitempty"`
+	CapabilityPolicy  *SignedCapabilityPolicyBundle `json:"capability_policy,omitempty"`
+	Claims            *LicenseTokenClaims           `json:"claims,omitempty"`
 }
 
 func ParsePublicKey(value string) (ed25519.PublicKey, error) {
@@ -88,6 +89,28 @@ func VerifyLicenseToken(publicKeyValue string, token string, allowExpired bool) 
 	return &claims, nil
 }
 
+func VerifyCapabilityPolicyBundle(publicKeyValue string, signed SignedCapabilityPolicyBundle) error {
+	publicKey, err := ParsePublicKey(publicKeyValue)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(signed.Signature) == "" {
+		return fmt.Errorf("capability policy signature is required")
+	}
+	payload, err := json.Marshal(signed.Bundle)
+	if err != nil {
+		return err
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(signed.Signature)
+	if err != nil {
+		return err
+	}
+	if !ed25519.Verify(publicKey, payload, signature) {
+		return fmt.Errorf("invalid capability policy signature")
+	}
+	return nil
+}
+
 func (c *Client) CachedAuthorization() (*CachedAuthorization, error) {
 	cached, err := LoadToken(c.options.AppID)
 	if err != nil {
@@ -115,6 +138,15 @@ func (c *Client) CachedAuthorization() (*CachedAuthorization, error) {
 	}
 	if claims.AppID != c.options.AppID {
 		return nil, fmt.Errorf("cached token app mismatch")
+	}
+	if cached.CapabilityPolicy != nil {
+		if err := VerifyCapabilityPolicyBundle(c.options.PublicKey, *cached.CapabilityPolicy); err != nil {
+			return nil, err
+		}
+		if cached.CapabilityPolicy.Bundle.AppID != c.options.AppID {
+			return nil, fmt.Errorf("cached capability policy app mismatch")
+		}
+		auth.CapabilityPolicy = cached.CapabilityPolicy
 	}
 
 	expiresAt := time.Unix(claims.ExpiresAt, 0)

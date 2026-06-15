@@ -211,6 +211,8 @@ GET /admin/apps/{app_id}/diagnostics?license_id=...&device_id=...&app_version=..
 
 The response explains the license, device, activation, release, capability policy, latest integrity report, latest risk event, and the latest `capability_denied` reason when present.
 
+The Go SDK also decodes the signed `capability_policy` returned by `/activate` and `/verify`. When a public key is configured, cached authorization only exposes the policy bundle after its Ed25519 signature verifies.
+
 ## Release Publish CLI
 
 `licenseguardctl` can register a release without manually copying artifact hashes:

@@ -183,6 +183,7 @@ updated_at
 - 提供 `POST /v1/capability/check`，按 license token 和 capability 返回服务端决策。
 - 未登记 capability 默认 `allowed=false`、`effective_mode=block`、`reason=unknown_capability`。
 - license 缺少 `required_entitlement` 时，即使策略配置 `mode=allow`，最终 `effective_mode` 也会收敛为 `block`。
+- Go SDK 已解析 `capability_policy`，支持验签、防篡改、缓存 signed policy，并在本地 `CachedAuthorization` 中仅暴露验签通过的策略包。
 - 验证：`TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies`、`TestCapabilityPolicyDeniesMissingEntitlementAndSignsVerifyBundle`。
 
 - [x] 增加授权诊断支撑 API。

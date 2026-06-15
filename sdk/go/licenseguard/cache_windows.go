@@ -11,10 +11,11 @@ import (
 )
 
 type CachedToken struct {
-	LicenseToken      string   `json:"license_token"`
-	ExpiresAt         string   `json:"expires_at,omitempty"`
-	OfflineGraceUntil string   `json:"offline_grace_until,omitempty"`
-	Entitlements      []string `json:"entitlements,omitempty"`
+	LicenseToken      string                        `json:"license_token"`
+	ExpiresAt         string                        `json:"expires_at,omitempty"`
+	OfflineGraceUntil string                        `json:"offline_grace_until,omitempty"`
+	Entitlements      []string                      `json:"entitlements,omitempty"`
+	CapabilityPolicy  *SignedCapabilityPolicyBundle `json:"capability_policy,omitempty"`
 }
 
 type dataBlob struct {
@@ -38,7 +39,7 @@ func SaveToken(appID string, result VerifyResult) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	cache := CachedToken{LicenseToken: result.LicenseToken, Entitlements: result.Entitlements}
+	cache := CachedToken{LicenseToken: result.LicenseToken, Entitlements: result.Entitlements, CapabilityPolicy: result.CapabilityPolicy}
 	if result.ExpiresAt != nil {
 		cache.ExpiresAt = result.ExpiresAt.Format("2006-01-02T15:04:05Z07:00")
 	}

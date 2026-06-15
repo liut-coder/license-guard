@@ -112,17 +112,65 @@ type UpdateInfo struct {
 	ReleaseNotes  string `json:"release_notes,omitempty"`
 }
 
+type CapabilityDecision struct {
+	Capability          string         `json:"capability"`
+	RequiredEntitlement string         `json:"required_entitlement"`
+	ConfiguredMode      string         `json:"configured_mode"`
+	EffectiveMode       string         `json:"effective_mode"`
+	Allowed             bool           `json:"allowed"`
+	Reason              string         `json:"reason,omitempty"`
+	Message             string         `json:"message,omitempty"`
+	LimitsJSON          map[string]any `json:"limits_json,omitempty"`
+}
+
+type CapabilityPolicyBundle struct {
+	AppID        string               `json:"app_id"`
+	LicenseID    string               `json:"license_id"`
+	DeviceID     string               `json:"device_id"`
+	Entitlements []string             `json:"entitlements"`
+	Decisions    []CapabilityDecision `json:"decisions"`
+	IssuedAt     int64                `json:"issued_at"`
+	ExpiresAt    int64                `json:"expires_at"`
+}
+
+type SignedCapabilityPolicyBundle struct {
+	Alg       string                 `json:"alg"`
+	KeyType   string                 `json:"key_type"`
+	Bundle    CapabilityPolicyBundle `json:"bundle"`
+	Signature string                 `json:"signature"`
+}
+
+func (b *SignedCapabilityPolicyBundle) Decision(capability string) (CapabilityDecision, bool) {
+	if b == nil {
+		return CapabilityDecision{}, false
+	}
+	for _, decision := range b.Bundle.Decisions {
+		if decision.Capability == capability {
+			return decision, true
+		}
+	}
+	return CapabilityDecision{}, false
+}
+
 type VerifyResult struct {
-	Allowed           bool        `json:"allowed"`
-	Code              string      `json:"code,omitempty"`
-	Message           string      `json:"message,omitempty"`
-	LicenseToken      string      `json:"license_token,omitempty"`
-	ExpiresAt         *time.Time  `json:"expires_at,omitempty"`
-	OfflineGraceUntil *time.Time  `json:"offline_grace_until,omitempty"`
-	Entitlements      []string    `json:"entitlements,omitempty"`
-	DeviceStatus      string      `json:"device_status,omitempty"`
-	Risk              RiskResult  `json:"risk"`
-	Update            *UpdateInfo `json:"update,omitempty"`
+	Allowed           bool                          `json:"allowed"`
+	Code              string                        `json:"code,omitempty"`
+	Message           string                        `json:"message,omitempty"`
+	LicenseToken      string                        `json:"license_token,omitempty"`
+	ExpiresAt         *time.Time                    `json:"expires_at,omitempty"`
+	OfflineGraceUntil *time.Time                    `json:"offline_grace_until,omitempty"`
+	Entitlements      []string                      `json:"entitlements,omitempty"`
+	CapabilityPolicy  *SignedCapabilityPolicyBundle `json:"capability_policy,omitempty"`
+	DeviceStatus      string                        `json:"device_status,omitempty"`
+	Risk              RiskResult                    `json:"risk"`
+	Update            *UpdateInfo                   `json:"update,omitempty"`
+}
+
+func (r *VerifyResult) CapabilityDecision(capability string) (CapabilityDecision, bool) {
+	if r == nil || r.CapabilityPolicy == nil {
+		return CapabilityDecision{}, false
+	}
+	return r.CapabilityPolicy.Decision(capability)
 }
 
 type APIError struct {
