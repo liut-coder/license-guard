@@ -160,7 +160,7 @@ bash scripts/production-check.sh
 
 The production check runs unit tests, builds the server and migration binaries, runs the end-to-end smoke test, and verifies deployment documentation, migration ordering, Admin UI JavaScript parsing, and SDK key `secret_hash` exposure guards.
 
-Use `docs/04-production-readiness-checklist.md` as the manual gate for PostgreSQL, HTTPS, backups, persistent `-key-dir`, demo seed caveats, admin access controls, and multi-replica migration rollout. Production traffic must use HTTPS; `licenseguard-migrate -seed-demo` is for local/demo databases, not production tenants.
+Use `docs/04-production-readiness-checklist.md` as the manual gate for PostgreSQL, HTTPS, backups, persistent `-key-dir`, demo seed caveats, admin access controls, and multi-replica migration rollout. Use `docs/06-backup-restore-runbook.md` for the concrete PostgreSQL plus signing-key backup and restore sequence. Production traffic must use HTTPS; `licenseguard-migrate -seed-demo` is for local/demo databases, not production tenants.
 
 ## Deployment Templates
 
@@ -171,7 +171,7 @@ Production-oriented templates live under `deploy/`:
 - `deploy/nginx/licenseguard.conf` is a HTTPS reverse-proxy baseline.
 - `deploy/systemd/` contains VM/bare-metal service units for migration and API startup.
 
-See `deploy/README.md` for the operational flow and backup caveats.
+See `deploy/README.md` for the operational flow and `docs/06-backup-restore-runbook.md` for backup and restore steps.
 
 ## VisionFlow Authorization Productization
 

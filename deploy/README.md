@@ -44,7 +44,7 @@ systemctl enable --now licenseguard.service
 ## Operational Checks
 
 - Run `bash scripts/production-check.sh` before cutting a deployable build.
-- Back up PostgreSQL and `/var/lib/licenseguard/keys` together.
+- Back up PostgreSQL and `/var/lib/licenseguard/keys` together; follow `docs/06-backup-restore-runbook.md` and keep both artifacts under the same recovery point ID.
 - `licenseguard-migrate -seed-demo` is rejected when `LG_PRODUCTION=true`; use demo seed only for local or demo databases.
 - Remove `LG_BOOTSTRAP_ADMIN_PASSWORD` after first successful production login and rotate the bootstrap password through Admin UI.
 - Keep `DATABASE_URL`, signing private keys, SDK secrets, admin tokens, and license keys out of logs and client bundles.

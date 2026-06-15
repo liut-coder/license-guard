@@ -522,7 +522,7 @@ Public Key 指纹
 
 - [x] 生产默认使用 PostgreSQL，不使用 JSON store。
 - [x] 生产模式要求显式持久化 `-key-dir`；多实例仍需部署层共享同一份 `signing-key.json` 或 key volume。
-- [ ] 明确备份和恢复流程，覆盖数据库和签名密钥。
+- [x] 明确备份和恢复流程，覆盖数据库和签名密钥。
 - [ ] 生产必须使用 HTTPS。
 - [x] 收紧生产 CORS，避免 Admin UI/API 长期使用 `Access-Control-Allow-Origin: *`。
 
@@ -533,6 +533,7 @@ Public Key 指纹
 - 默认保留 `*` 兼容本地开发；生产部署模板默认使用具体 HTTPS origin。
 - API 只对匹配 Origin 返回 `Access-Control-Allow-Origin`，非匹配 Origin 不返回放行头。
 - Docker Compose 和 systemd 模板均已接入 `LG_CORS_ALLOWED_ORIGINS` 和 `LG_PRODUCTION=true`。
+- 新增 `docs/06-backup-restore-runbook.md`，明确 PostgreSQL、`signing-key.json`、部署配置、HTTPS 反代配置和迁移文件的备份对象、恢复顺序、恢复后验证和演练频率。
 
 验证：
 
@@ -542,6 +543,7 @@ Public Key 指纹
 - `TestValidateProductionConfigRequiresExplicitKeyDir`
 - `TestValidateProductionConfigRejectsWildcardCORS`
 - `TestValidateProductionConfigAcceptsProductionSettings`
+- `scripts/production-check.sh` 校验 backup/restore runbook 存在，并包含 `pg_dump`、`pg_restore`、`signing-key.json` 和 `/v1/public-key` 验证步骤。
 
 - [x] 处理 demo admin：生产首次启动强制改密或生产模式禁用 demo seed。
 

@@ -55,6 +55,7 @@ section "Required files"
 require_file README.md
 require_file docs/01-development-implementation-plan.md
 require_file docs/04-production-readiness-checklist.md
+require_file docs/06-backup-restore-runbook.md
 require_file scripts/smoke.sh
 require_file web/admin/index.html
 require_file internal/licensecore/types.go
@@ -71,6 +72,7 @@ require_text README.md "-store postgres" "PostgreSQL runtime flag guidance"
 require_text README.md "-key-dir" "signing key directory guidance"
 require_text README.md "HTTPS" "HTTPS guidance"
 require_text README.md "backup|backed up|备份" "backup guidance"
+require_text README.md "docs/06-backup-restore-runbook\\.md" "backup runbook link"
 require_text README.md "seed-demo.*not production|not production.*seed-demo|demo.*not production" "demo seed production caveat"
 require_text docs/01-development-implementation-plan.md "多副本.*licenseguard-migrate|licenseguard-migrate.*多副本" "multi-replica migration guidance"
 require_text docs/01-development-implementation-plan.md "-key-dir.*备份|备份.*-key-dir|signing-key\\.json.*备份" "signing key backup guidance"
@@ -79,6 +81,11 @@ require_text docs/04-production-readiness-checklist.md "DATABASE_URL" "productio
 require_text docs/04-production-readiness-checklist.md "signing-key\\.json" "signing key checklist"
 require_text docs/04-production-readiness-checklist.md "secret_hash" "SDK key leak checklist"
 require_text docs/04-production-readiness-checklist.md "seed-demo.*生产|生产.*seed-demo" "demo seed checklist"
+require_text docs/04-production-readiness-checklist.md "06-backup-restore-runbook" "backup runbook checklist"
+require_text docs/06-backup-restore-runbook.md "pg_dump" "PostgreSQL backup command"
+require_text docs/06-backup-restore-runbook.md "pg_restore" "PostgreSQL restore command"
+require_text docs/06-backup-restore-runbook.md "signing-key\\.json" "signing key restore guidance"
+require_text docs/06-backup-restore-runbook.md "/v1/public-key" "public key restore validation"
 require_text deploy/docker-compose.yml "licenseguard-migrate" "compose migration service"
 require_text deploy/docker-compose.yml "-production=\\$\\{LG_PRODUCTION\\}" "compose migration production flag"
 require_text deploy/docker-compose.yml "LG_BOOTSTRAP_ADMIN_PASSWORD:[[:space:]]*\\$\\{LG_BOOTSTRAP_ADMIN_PASSWORD\\}" "compose bootstrap admin env"

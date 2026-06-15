@@ -20,6 +20,7 @@ bash scripts/production-check.sh
 - `migrations/001_initial_schema.sql` 到 `migrations/009_db_encryption_diagnostics.sql` 文件顺序和 `schema_migrations` 记录
 - Admin UI 内联 JavaScript 可解析
 - README 和部署文档包含 PostgreSQL、迁移、`-key-dir`、备份、HTTPS、demo seed 限制和多副本迁移约束
+- `docs/06-backup-restore-runbook.md` 存在，并覆盖 PostgreSQL、`signing-key.json`、恢复顺序和恢复后验证
 - SDK Key API 使用 `SDKKeyView`，管理台不引用 `secret_hash`，单测和烟测覆盖 `secret_hash` 不泄露
 
 上线前必须保留本次脚本输出摘要、执行人、日期和目标版本。任何失败项都应先修复，再重新执行完整脚本。
@@ -32,12 +33,12 @@ bash scripts/production-check.sh
 - 多副本生产环境先由发布流水线运行 `licenseguard-migrate`，再启动或滚动 API 实例。
 - `-auto-migrate` 只用于小型单节点或临时环境，不作为多副本生产默认方案。
 - `licenseguard-migrate -seed-demo` 仅用于本地或演示数据库；`LG_PRODUCTION=true` / `-production=true` 会拒绝生产执行 demo seed。
-- 数据库备份必须覆盖恢复演练，不只检查备份任务是否存在。
+- 数据库备份必须按 `docs/06-backup-restore-runbook.md` 覆盖恢复演练，不只检查备份任务是否存在。
 
 ## 3. 签名密钥
 
 - 生产模式必须显式传入 `-key-dir`，并挂载到持久化磁盘或受控 secret volume。
-- `signing-key.json` 需要备份、访问控制和恢复流程。
+- `signing-key.json` 需要按同一恢复点和 PostgreSQL 一起备份、访问控制和恢复。
 - 多实例部署必须共享同一份签名私钥；否则客户端 token 验签会不稳定。
 - 公钥可以发布给 SDK；私钥不得进入客户端、日志、截图或工单。
 
