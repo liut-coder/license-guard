@@ -26,13 +26,20 @@ func main() {
 }
 
 func run(ctx context.Context, args []string) error {
-	if len(args) < 2 || args[0] != "release" || args[1] != "publish" {
-		return fmt.Errorf("usage: licenseguardctl release publish [flags]")
+	if len(args) >= 2 && args[0] == "release" && args[1] == "publish" {
+		return runReleasePublishWithIO(ctx, args[2:], os.Stdout)
 	}
-	return runReleasePublish(ctx, args[2:])
+	if len(args) >= 2 && args[0] == "visionflow" && args[1] == "bootstrap" {
+		return runVisionFlowBootstrapWithIO(ctx, args[2:], os.Stdout)
+	}
+	return fmt.Errorf("usage: licenseguardctl release publish [flags]\n       licenseguardctl visionflow bootstrap [flags]")
 }
 
 func runReleasePublish(ctx context.Context, args []string) error {
+	return runReleasePublishWithIO(ctx, args, os.Stdout)
+}
+
+func runReleasePublishWithIO(ctx context.Context, args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("release publish", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
@@ -89,7 +96,7 @@ func runReleasePublish(ctx context.Context, args []string) error {
 	}
 
 	if *dryRun {
-		return writeJSON(os.Stdout, payload)
+		return writeJSON(out, payload)
 	}
 
 	baseURL := normalizeServerURL(*server)
@@ -109,8 +116,85 @@ func runReleasePublish(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stdout, "published release %s %s build %d\n", payload.AppID, payload.Version, payload.BuildNumber)
-	return writeJSON(os.Stdout, response)
+	fmt.Fprintf(out, "published release %s %s build %d\n", payload.AppID, payload.Version, payload.BuildNumber)
+	return writeJSON(out, response)
+}
+
+func runVisionFlowBootstrapWithIO(ctx context.Context, args []string, out io.Writer) error {
+	fs := flag.NewFlagSet("visionflow bootstrap", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	server := fs.String("server", envOrDefault("LICENSE_GUARD_ADMIN_URL", ""), "License Guard server URL, for example http://127.0.0.1:8090")
+	endpoint := fs.String("endpoint", "", "client endpoint URL; defaults to <server>/v1")
+	adminToken := fs.String("admin-token", os.Getenv("LICENSE_GUARD_ADMIN_TOKEN"), "admin bearer token")
+	adminAccount := fs.String("admin-account", os.Getenv("LICENSE_GUARD_ADMIN_ACCOUNT"), "admin account used when admin-token is empty")
+	adminPassword := fs.String("admin-password", os.Getenv("LICENSE_GUARD_ADMIN_PASSWORD"), "admin password used when admin-token is empty")
+	appID := fs.String("app-id", "app_visionflow_windows_prod", "VisionFlow app id")
+	appName := fs.String("app-name", "VisionFlow Windows", "VisionFlow app display name")
+	ownerTeam := fs.String("owner-team", "VisionFlow", "app owner team")
+	platform := fs.String("platform", "windows", "release platform")
+	version := fs.String("version", "0.1.0", "VisionFlow app version")
+	buildNumber := fs.Int("build-number", 1, "VisionFlow build number")
+	binaryHash := fs.String("binary-hash", "dev-visionflow-main-binary-sha256", "VisionFlow main binary sha256")
+	signerThumbprint := fs.String("signer-thumbprint", "dev-visionflow-signer-thumbprint", "VisionFlow signer thumbprint")
+	packageSHA256 := fs.String("package-sha256", "dev-visionflow-package-sha256", "VisionFlow package sha256")
+	downloadURL := fs.String("download-url", "http://127.0.0.1:8090/downloads/VisionFlowSetup.exe", "VisionFlow download URL")
+	releaseNotes := fs.String("release-notes", "VisionFlow local development bootstrap release", "release notes")
+	licenseOwner := fs.String("license-owner", "visionflow-local-dev", "license owner reference")
+	licenseDays := fs.Int("license-days", 30, "license validity days when expires-at is empty")
+	expiresAt := fs.String("expires-at", "", "license expiration date in YYYY-MM-DD")
+	maxDevices := fs.Int("max-devices", 1, "license max devices")
+	entitlements := fs.String("entitlements", strings.Join(defaultVisionFlowEntitlements(), ","), "comma-separated entitlements")
+	writeEnvPath := fs.String("write-env", "", "optional path to write env output")
+	format := fs.String("format", "env", "output format: env or json")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	input := visionFlowBootstrapInput{
+		server:           *server,
+		endpoint:         *endpoint,
+		adminToken:       *adminToken,
+		adminAccount:     *adminAccount,
+		adminPassword:    *adminPassword,
+		appID:            *appID,
+		appName:          *appName,
+		ownerTeam:        *ownerTeam,
+		platform:         *platform,
+		version:          *version,
+		buildNumber:      *buildNumber,
+		binaryHash:       *binaryHash,
+		signerThumbprint: *signerThumbprint,
+		packageSHA256:    *packageSHA256,
+		downloadURL:      *downloadURL,
+		releaseNotes:     *releaseNotes,
+		licenseOwner:     *licenseOwner,
+		licenseDays:      *licenseDays,
+		expiresAt:        *expiresAt,
+		maxDevices:       *maxDevices,
+		entitlements:     parseCSV(*entitlements),
+		writeEnvPath:     *writeEnvPath,
+		format:           *format,
+	}
+	result, err := bootstrapVisionFlow(ctx, input)
+	if err != nil {
+		return err
+	}
+	rendered, err := renderVisionFlowBootstrapResult(result, input.format)
+	if err != nil {
+		return err
+	}
+	if input.writeEnvPath != "" {
+		if err := os.MkdirAll(filepath.Dir(filepath.Clean(input.writeEnvPath)), 0o755); err != nil && filepath.Dir(filepath.Clean(input.writeEnvPath)) != "." {
+			return err
+		}
+		if err := os.WriteFile(filepath.Clean(input.writeEnvPath), []byte(rendered), 0o600); err != nil {
+			return err
+		}
+	}
+	_, err = io.WriteString(out, rendered)
+	return err
 }
 
 type releaseInput struct {
@@ -150,6 +234,189 @@ type releasePayload struct {
 	MinSupportedVersion  string `json:"min_supported_version,omitempty"`
 	RolloutPercent       int    `json:"rollout_percent"`
 	ReleaseNotes         string `json:"release_notes"`
+}
+
+type visionFlowBootstrapInput struct {
+	server           string
+	endpoint         string
+	adminToken       string
+	adminAccount     string
+	adminPassword    string
+	appID            string
+	appName          string
+	ownerTeam        string
+	platform         string
+	version          string
+	buildNumber      int
+	binaryHash       string
+	signerThumbprint string
+	packageSHA256    string
+	downloadURL      string
+	releaseNotes     string
+	licenseOwner     string
+	licenseDays      int
+	expiresAt        string
+	maxDevices       int
+	entitlements     []string
+	writeEnvPath     string
+	format           string
+}
+
+type visionFlowBootstrapResult struct {
+	AppID            string            `json:"app_id"`
+	Endpoint         string            `json:"endpoint"`
+	PublicKey        string            `json:"public_key"`
+	Version          string            `json:"version"`
+	BinaryHash       string            `json:"binary_hash"`
+	SignerThumbprint string            `json:"signer_thumbprint"`
+	LicenseKey       string            `json:"license_key"`
+	Entitlements     []string          `json:"entitlements"`
+	AppCreated       bool              `json:"app_created"`
+	ReleaseID        string            `json:"release_id,omitempty"`
+	ReleaseCreated   bool              `json:"release_created"`
+	ReleasePatched   bool              `json:"release_patched"`
+	LicenseID        string            `json:"license_id,omitempty"`
+	ExpiresAt        string            `json:"expires_at"`
+	VisionFlowEnv    map[string]string `json:"visionflow_env"`
+}
+
+type adminApp struct {
+	ID          string `json:"id"`
+	AppKey      string `json:"app_key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	OwnerTeam   string `json:"owner_team"`
+	Status      string `json:"status"`
+}
+
+type adminRelease struct {
+	ID                   string `json:"id"`
+	AppID                string `json:"app_id"`
+	Platform             string `json:"platform"`
+	Version              string `json:"version"`
+	BuildNumber          int    `json:"build_number"`
+	Channel              string `json:"channel"`
+	Status               string `json:"status"`
+	SignerThumbprint     string `json:"signer_thumbprint"`
+	MainBinaryHash       string `json:"main_binary_hash"`
+	ResourceManifestHash string `json:"resource_manifest_hash"`
+	DownloadURL          string `json:"download_url"`
+	PackageSHA256        string `json:"package_sha256"`
+	Mandatory            bool   `json:"mandatory"`
+	MinSupportedVersion  string `json:"min_supported_version"`
+	RolloutPercent       int    `json:"rollout_percent"`
+	ReleaseNotes         string `json:"release_notes"`
+}
+
+type adminLicense struct {
+	ID           string   `json:"id"`
+	AppID        string   `json:"app_id"`
+	PlanName     string   `json:"plan_name"`
+	OwnerRef     string   `json:"owner_ref"`
+	MaxDevices   int      `json:"max_devices"`
+	Entitlements []string `json:"entitlements"`
+	Status       string   `json:"status"`
+}
+
+type adminAppDetail struct {
+	App      adminApp       `json:"app"`
+	Releases []adminRelease `json:"releases"`
+	Licenses []adminLicense `json:"licenses"`
+}
+
+type publicKeyResponse struct {
+	Algorithm string `json:"alg"`
+	KeyType   string `json:"key_type"`
+	PublicKey string `json:"public_key"`
+}
+
+func bootstrapVisionFlow(ctx context.Context, input visionFlowBootstrapInput) (visionFlowBootstrapResult, error) {
+	baseURL := normalizeServerURL(input.server)
+	if baseURL == "" {
+		return visionFlowBootstrapResult{}, errors.New("server URL is required")
+	}
+	input.endpoint = normalizeClientEndpoint(input.endpoint, baseURL)
+	input.appID = strings.TrimSpace(input.appID)
+	input.appName = fallback(strings.TrimSpace(input.appName), "VisionFlow Windows")
+	input.ownerTeam = fallback(strings.TrimSpace(input.ownerTeam), "VisionFlow")
+	input.platform = fallback(strings.TrimSpace(input.platform), "windows")
+	input.version = fallback(strings.TrimSpace(input.version), "0.1.0")
+	input.binaryHash = fallback(strings.TrimSpace(input.binaryHash), "dev-visionflow-main-binary-sha256")
+	input.signerThumbprint = fallback(strings.TrimSpace(input.signerThumbprint), "dev-visionflow-signer-thumbprint")
+	input.packageSHA256 = fallback(strings.TrimSpace(input.packageSHA256), "dev-visionflow-package-sha256")
+	input.downloadURL = fallback(strings.TrimSpace(input.downloadURL), baseURL+"/downloads/VisionFlowSetup.exe")
+	input.releaseNotes = fallback(strings.TrimSpace(input.releaseNotes), "VisionFlow local development bootstrap release")
+	input.licenseOwner = fallback(strings.TrimSpace(input.licenseOwner), "visionflow-local-dev")
+	input.entitlements = normalizeStringList(input.entitlements)
+	if input.appID == "" {
+		return visionFlowBootstrapResult{}, errors.New("app-id is required")
+	}
+	if input.buildNumber <= 0 {
+		return visionFlowBootstrapResult{}, errors.New("build-number must be greater than zero")
+	}
+	if input.maxDevices <= 0 {
+		return visionFlowBootstrapResult{}, errors.New("max-devices must be greater than zero")
+	}
+	if len(input.entitlements) == 0 {
+		input.entitlements = defaultVisionFlowEntitlements()
+	}
+
+	token := strings.TrimSpace(input.adminToken)
+	if token == "" {
+		var err error
+		token, err = loginAdmin(ctx, baseURL, strings.TrimSpace(input.adminAccount), strings.TrimSpace(input.adminPassword))
+		if err != nil {
+			return visionFlowBootstrapResult{}, err
+		}
+	}
+
+	appCreated, err := ensureVisionFlowApp(ctx, baseURL, token, input)
+	if err != nil {
+		return visionFlowBootstrapResult{}, err
+	}
+	detail, err := fetchAppDetail(ctx, baseURL, token, input.appID)
+	if err != nil {
+		return visionFlowBootstrapResult{}, err
+	}
+	release, releaseCreated, releasePatched, err := ensureVisionFlowRelease(ctx, baseURL, token, input, detail.Releases)
+	if err != nil {
+		return visionFlowBootstrapResult{}, err
+	}
+	publicKey, err := fetchClientPublicKey(ctx, input.endpoint)
+	if err != nil {
+		return visionFlowBootstrapResult{}, err
+	}
+	licenseKey, licenseID, expiresAt, err := createVisionFlowLicense(ctx, baseURL, token, input)
+	if err != nil {
+		return visionFlowBootstrapResult{}, err
+	}
+
+	env := map[string]string{
+		"LICENSE_GUARD_ENDPOINT":          input.endpoint,
+		"LICENSE_GUARD_APP_ID":            input.appID,
+		"LICENSE_GUARD_PUBLIC_KEY":        publicKey,
+		"LICENSE_GUARD_APP_VERSION":       input.version,
+		"LICENSE_GUARD_BINARY_HASH":       input.binaryHash,
+		"LICENSE_GUARD_SIGNER_THUMBPRINT": input.signerThumbprint,
+		"VISIONFLOW_LICENSE_KEY":          licenseKey,
+	}
+	return visionFlowBootstrapResult{
+		AppID:            input.appID,
+		Endpoint:         input.endpoint,
+		PublicKey:        publicKey,
+		Version:          input.version,
+		BinaryHash:       input.binaryHash,
+		SignerThumbprint: input.signerThumbprint,
+		LicenseKey:       licenseKey,
+		Entitlements:     input.entitlements,
+		AppCreated:       appCreated,
+		ReleaseID:        release.ID,
+		ReleaseCreated:   releaseCreated,
+		ReleasePatched:   releasePatched,
+		LicenseID:        licenseID,
+		ExpiresAt:        expiresAt,
+		VisionFlowEnv:    env,
+	}, nil
 }
 
 func buildReleasePayload(input releaseInput) (releasePayload, error) {
@@ -208,6 +475,188 @@ func buildReleasePayload(input releaseInput) (releasePayload, error) {
 		RolloutPercent:       rollout,
 		ReleaseNotes:         notes,
 	}, nil
+}
+
+func ensureVisionFlowApp(ctx context.Context, baseURL string, token string, input visionFlowBootstrapInput) (bool, error) {
+	var apps struct {
+		Items []adminApp `json:"items"`
+	}
+	if err := getAdminJSON(ctx, baseURL, token, "/admin/apps", &apps); err != nil {
+		return false, err
+	}
+	for _, app := range apps.Items {
+		if app.AppKey == input.appID {
+			return false, nil
+		}
+	}
+	payload := map[string]any{
+		"app_key":     input.appID,
+		"name":        input.appName,
+		"description": "VisionFlow Windows client",
+		"owner_team":  input.ownerTeam,
+		"platform":    input.platform,
+		"version":     input.version,
+	}
+	if _, err := postAdminJSON(ctx, baseURL, token, "/admin/apps", payload); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func fetchAppDetail(ctx context.Context, baseURL string, token string, appID string) (adminAppDetail, error) {
+	var detail adminAppDetail
+	err := getAdminJSON(ctx, baseURL, token, "/admin/apps/"+url.PathEscape(appID), &detail)
+	return detail, err
+}
+
+func ensureVisionFlowRelease(ctx context.Context, baseURL string, token string, input visionFlowBootstrapInput, releases []adminRelease) (adminRelease, bool, bool, error) {
+	var existing *adminRelease
+	for i := range releases {
+		release := releases[i]
+		if release.Platform == input.platform && release.Version == input.version {
+			existing = &release
+			break
+		}
+	}
+	payload := map[string]any{
+		"platform":          input.platform,
+		"version":           input.version,
+		"build_number":      input.buildNumber,
+		"channel":           "production",
+		"status":            "active",
+		"signer_thumbprint": input.signerThumbprint,
+		"main_binary_hash":  input.binaryHash,
+		"download_url":      input.downloadURL,
+		"package_sha256":    input.packageSHA256,
+		"mandatory":         false,
+		"rollout_percent":   100,
+		"release_notes":     input.releaseNotes,
+	}
+
+	if existing != nil {
+		var response struct {
+			Release adminRelease `json:"release"`
+		}
+		err := patchAdminJSON(ctx, baseURL, token, "/admin/apps/"+url.PathEscape(input.appID)+"/releases/"+url.PathEscape(existing.ID), payload, &response)
+		return response.Release, false, true, err
+	}
+
+	var response struct {
+		Release adminRelease `json:"release"`
+	}
+	err := postJSON(ctx, baseURL+"/admin/apps/"+url.PathEscape(input.appID)+"/releases", token, payload, &response)
+	return response.Release, true, false, err
+}
+
+func fetchClientPublicKey(ctx context.Context, endpoint string) (string, error) {
+	var response publicKeyResponse
+	if err := getJSON(ctx, strings.TrimRight(endpoint, "/")+"/public-key", "", &response); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(response.PublicKey) == "" {
+		return "", errors.New("public-key endpoint returned no public_key")
+	}
+	return strings.TrimSpace(response.PublicKey), nil
+}
+
+func createVisionFlowLicense(ctx context.Context, baseURL string, token string, input visionFlowBootstrapInput) (string, string, string, error) {
+	expiresAt := strings.TrimSpace(input.expiresAt)
+	if expiresAt == "" {
+		days := input.licenseDays
+		if days <= 0 {
+			days = 30
+		}
+		expiresAt = time.Now().Add(time.Duration(days) * 24 * time.Hour).Format("2006-01-02")
+	}
+	payload := map[string]any{
+		"app_id":       input.appID,
+		"plan_name":    "VisionFlow Dev",
+		"owner_ref":    input.licenseOwner,
+		"max_devices":  input.maxDevices,
+		"expires_at":   expiresAt,
+		"entitlements": input.entitlements,
+	}
+	var response struct {
+		License    adminLicense `json:"license"`
+		LicenseKey string       `json:"license_key"`
+	}
+	if err := postJSON(ctx, baseURL+"/admin/licenses", token, payload, &response); err != nil {
+		return "", "", "", err
+	}
+	if strings.TrimSpace(response.LicenseKey) == "" {
+		return "", "", "", errors.New("license creation returned no license_key")
+	}
+	return strings.TrimSpace(response.LicenseKey), response.License.ID, expiresAt, nil
+}
+
+func renderVisionFlowBootstrapResult(result visionFlowBootstrapResult, format string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "env":
+		keys := []string{
+			"LICENSE_GUARD_ENDPOINT",
+			"LICENSE_GUARD_APP_ID",
+			"LICENSE_GUARD_PUBLIC_KEY",
+			"LICENSE_GUARD_APP_VERSION",
+			"LICENSE_GUARD_BINARY_HASH",
+			"LICENSE_GUARD_SIGNER_THUMBPRINT",
+			"VISIONFLOW_LICENSE_KEY",
+		}
+		var b strings.Builder
+		for _, key := range keys {
+			b.WriteString(key)
+			b.WriteString("=")
+			b.WriteString(result.VisionFlowEnv[key])
+			b.WriteString("\n")
+		}
+		return b.String(), nil
+	case "json":
+		var b bytes.Buffer
+		if err := writeJSON(&b, result); err != nil {
+			return "", err
+		}
+		return b.String(), nil
+	default:
+		return "", fmt.Errorf("unsupported format %q", format)
+	}
+}
+
+func normalizeClientEndpoint(endpoint string, baseURL string) string {
+	endpoint = strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	if endpoint != "" {
+		return endpoint
+	}
+	return strings.TrimRight(baseURL, "/") + "/v1"
+}
+
+func defaultVisionFlowEntitlements() []string {
+	return []string{
+		"visionflow.automation",
+		"visionflow.batch",
+		"visionflow.export",
+		"visionflow.plugin",
+		"visionflow.update",
+	}
+}
+
+func parseCSV(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return normalizeStringList(strings.Split(value, ","))
+}
+
+func normalizeStringList(values []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func hashOrOverride(path string, override string, label string) (string, error) {
@@ -270,18 +719,44 @@ func postAdminJSON(ctx context.Context, baseURL string, token string, path strin
 	return response, nil
 }
 
+func getAdminJSON(ctx context.Context, baseURL string, token string, path string, out any) error {
+	return getJSON(ctx, baseURL+path, token, out)
+}
+
+func patchAdminJSON(ctx context.Context, baseURL string, token string, path string, payload any, out any) error {
+	return patchJSON(ctx, baseURL+path, token, payload, out)
+}
+
+func getJSON(ctx context.Context, target string, token string, out any) error {
+	return requestJSON(ctx, http.MethodGet, target, token, nil, out)
+}
+
+func patchJSON(ctx context.Context, target string, token string, payload any, out any) error {
+	return requestJSON(ctx, http.MethodPatch, target, token, payload, out)
+}
+
 func postJSON(ctx context.Context, target string, token string, payload any, out any) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
+	return requestJSON(ctx, http.MethodPost, target, token, payload, out)
+}
+
+func requestJSON(ctx context.Context, method string, target string, token string, payload any, out any) error {
+	var body io.Reader = http.NoBody
+	if payload != nil {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(raw)
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, target, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(reqCtx, method, target, body)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if strings.TrimSpace(token) != "" {
 		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
 	}
@@ -294,6 +769,9 @@ func postJSON(ctx context.Context, target string, token string, payload any, out
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("license guard returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+	if out == nil {
+		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }

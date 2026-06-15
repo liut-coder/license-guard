@@ -1,8 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -72,5 +78,107 @@ func TestNormalizeServerURL(t *testing.T) {
 		if got := normalizeServerURL(input); got != want {
 			t.Fatalf("normalizeServerURL(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestVisionFlowBootstrapCreatesUsableEnv(t *testing.T) {
+	var appCreated bool
+	var releasePatched bool
+	var licenseCreated bool
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/admin/apps":
+			writeTestJSON(t, w, map[string]any{"items": []any{}})
+		case r.Method == http.MethodPost && r.URL.Path == "/admin/apps":
+			appCreated = true
+			var req map[string]any
+			decodeTestJSON(t, r, &req)
+			if req["app_key"] != "app_visionflow_windows_prod" || req["version"] != "0.1.0" {
+				t.Fatalf("unexpected app create payload: %#v", req)
+			}
+			writeTestJSON(t, w, map[string]any{
+				"app": map[string]any{"app_key": "app_visionflow_windows_prod"},
+				"release": map[string]any{
+					"id":       "rel_1",
+					"app_id":   "app_visionflow_windows_prod",
+					"platform": "windows",
+					"version":  "0.1.0",
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/admin/apps/app_visionflow_windows_prod":
+			writeTestJSON(t, w, map[string]any{
+				"app": map[string]any{"app_key": "app_visionflow_windows_prod"},
+				"releases": []map[string]any{{
+					"id":       "rel_1",
+					"app_id":   "app_visionflow_windows_prod",
+					"platform": "windows",
+					"version":  "0.1.0",
+				}},
+			})
+		case r.Method == http.MethodPatch && r.URL.Path == "/admin/apps/app_visionflow_windows_prod/releases/rel_1":
+			releasePatched = true
+			var req map[string]any
+			decodeTestJSON(t, r, &req)
+			if req["main_binary_hash"] != "dev-visionflow-main-binary-sha256" || req["signer_thumbprint"] != "dev-visionflow-signer-thumbprint" {
+				t.Fatalf("unexpected release patch payload: %#v", req)
+			}
+			writeTestJSON(t, w, map[string]any{"release": map[string]any{"id": "rel_1"}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/public-key":
+			writeTestJSON(t, w, map[string]any{"alg": "Ed25519", "key_type": "public", "public_key": "test-public-key"})
+		case r.Method == http.MethodPost && r.URL.Path == "/admin/licenses":
+			licenseCreated = true
+			var req map[string]any
+			decodeTestJSON(t, r, &req)
+			entitlements, ok := req["entitlements"].([]any)
+			if !ok || len(entitlements) == 0 || entitlements[0] != "visionflow.automation" {
+				t.Fatalf("unexpected license entitlements: %#v", req["entitlements"])
+			}
+			writeTestJSON(t, w, map[string]any{
+				"license":     map[string]any{"id": "lic_1", "app_id": "app_visionflow_windows_prod"},
+				"license_key": "LG-VISIONFLOW-DEV",
+			})
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	err := runVisionFlowBootstrapWithIO(context.Background(), []string{
+		"-server", server.URL,
+		"-admin-token", "admin-token",
+	}, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !appCreated || !releasePatched || !licenseCreated {
+		t.Fatalf("flow not completed: appCreated=%v releasePatched=%v licenseCreated=%v", appCreated, releasePatched, licenseCreated)
+	}
+	env := out.String()
+	for _, want := range []string{
+		"LICENSE_GUARD_ENDPOINT=" + server.URL + "/v1",
+		"LICENSE_GUARD_APP_ID=app_visionflow_windows_prod",
+		"LICENSE_GUARD_PUBLIC_KEY=test-public-key",
+		"VISIONFLOW_LICENSE_KEY=LG-VISIONFLOW-DEV",
+	} {
+		if !strings.Contains(env, want) {
+			t.Fatalf("env output missing %q:\n%s", want, env)
+		}
+	}
+}
+
+func decodeTestJSON(t *testing.T, r *http.Request, out any) {
+	t.Helper()
+	if err := json.NewDecoder(r.Body).Decode(out); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestJSON(t *testing.T, w http.ResponseWriter, value any) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		t.Fatal(err)
 	}
 }

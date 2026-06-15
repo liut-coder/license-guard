@@ -175,7 +175,31 @@ See `deploy/README.md` for the operational flow and backup caveats.
 
 ## VisionFlow Authorization Productization
 
-The current VisionFlow-facing roadmap is tracked in `docs/2026-06-15-visionflow-support-enhancement-plan.md`. It covers the planned one-command bootstrap flow, capability policy model, Admin UI policy editor, signed policy delivery, release automation, and acceptance checks for VisionFlow integration.
+The current VisionFlow-facing roadmap is tracked in `docs/2026-06-15-visionflow-support-enhancement-plan.md`. It covers the one-command bootstrap flow, capability policy model, Admin UI policy editor, signed policy delivery, release automation, and acceptance checks for VisionFlow integration.
+
+## VisionFlow Bootstrap CLI
+
+`licenseguardctl` can create or reuse the VisionFlow app, patch the local development release with integrity metadata, issue a development license, fetch the public key, and print env values VisionFlow can use directly:
+
+```bash
+go run ./cmd/licenseguardctl visionflow bootstrap \
+  -server http://127.0.0.1:8090 \
+  -admin-account admin@example.com \
+  -admin-password 'ChangeMe123!' \
+  -write-env ../vision-flow/.env.local
+```
+
+The generated env includes:
+
+```text
+LICENSE_GUARD_ENDPOINT
+LICENSE_GUARD_APP_ID
+LICENSE_GUARD_PUBLIC_KEY
+LICENSE_GUARD_APP_VERSION
+LICENSE_GUARD_BINARY_HASH
+LICENSE_GUARD_SIGNER_THUMBPRINT
+VISIONFLOW_LICENSE_KEY
+```
 
 ## Release Publish CLI
 

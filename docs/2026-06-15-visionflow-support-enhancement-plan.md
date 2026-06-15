@@ -84,7 +84,7 @@ VisionFlow 内置安全基线
 
 ### P0：VisionFlow 授权产品化入口
 
-- [ ] 增加 VisionFlow 一键 bootstrap 命令：
+- [x] 增加 VisionFlow 一键 bootstrap 命令：
 
 ```text
 licenseguardctl visionflow bootstrap
@@ -111,6 +111,16 @@ LICENSE_GUARD_BINARY_HASH=dev-visionflow-main-binary-sha256
 LICENSE_GUARD_SIGNER_THUMBPRINT=dev-visionflow-signer-thumbprint
 VISIONFLOW_LICENSE_KEY=...
 ```
+
+已落地：
+
+- `cmd/licenseguardctl visionflow bootstrap`
+- 支持创建或复用 `app_visionflow_windows_prod`
+- 支持 PATCH 初始 Release，补齐 `main_binary_hash`、`signer_thumbprint`、`package_sha256`、`download_url`
+- 支持签发 VisionFlow 开发 license
+- 支持读取 `/v1/public-key`
+- 支持输出 env 或写入 `-write-env`
+- 验证：`go test ./cmd/licenseguardctl`
 
 - [ ] 增加 VisionFlow 默认产品模板。
 
@@ -579,7 +589,7 @@ hash 字段缺失
 - [ ] VisionFlow 能通过本地 `replace` import SDK 并编译。
 - [ ] License Guard 后台存在 VisionFlow App、Release、License。
 - [ ] VisionFlow 使用有效 license 激活后，后台出现 Device 和 Activation。
-- [ ] `licenseguardctl visionflow bootstrap` 一条命令能生成 VisionFlow 可用本地试用配置。
+- [x] `licenseguardctl visionflow bootstrap` 一条命令能生成 VisionFlow 可用本地试用配置。
 - [ ] 默认 VisionFlow capability policy 存在，且未知 capability 不会被默认放行。
 - [ ] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
 - [ ] 诊断 API 能解释一次 capability deny 的具体原因。
