@@ -51,6 +51,129 @@ func TestReleaseInRollout(t *testing.T) {
 	}
 }
 
+func TestVerifyReturnsOptionalUpdateInfo(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	addDemoUpdateRelease(t, server, AppRelease{
+		ID:             "rel_demo_nax_150_optional",
+		Version:        "1.5.0",
+		BuildNumber:    10500,
+		DownloadURL:    "https://download.example.com/nax-desktop/1.5.0/setup.exe",
+		PackageSHA256:  "package-150-sha256",
+		ReleaseNotes:   "Optional 1.5.0 update.",
+		RolloutPercent: 100,
+	})
+
+	activateResp := activateDemoLicense(t, server, "optional-update-install", map[string]any{})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+	verifyResp := verifyLicenseTokenForApp(t, server, DemoAppID, activateResp.LicenseToken, "optional-update-install", "1.4.2", nil)
+	if !verifyResp.Allowed {
+		t.Fatalf("verify response = %#v, want allowed", verifyResp)
+	}
+	if verifyResp.Update == nil {
+		t.Fatal("verify response missing update info")
+	}
+	if !verifyResp.Update.Available ||
+		verifyResp.Update.Required ||
+		verifyResp.Update.LatestVersion != "1.5.0" ||
+		verifyResp.Update.DownloadURL != "https://download.example.com/nax-desktop/1.5.0/setup.exe" ||
+		verifyResp.Update.PackageSHA256 != "package-150-sha256" ||
+		verifyResp.Update.ReleaseNotes != "Optional 1.5.0 update." {
+		t.Fatalf("update info = %#v, want optional 1.5.0 update", verifyResp.Update)
+	}
+}
+
+func TestVerifyReturnsRequiredUpdateForMandatoryRelease(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	addDemoUpdateRelease(t, server, AppRelease{
+		ID:             "rel_demo_nax_150_mandatory",
+		Version:        "1.5.0",
+		BuildNumber:    10500,
+		DownloadURL:    "https://download.example.com/nax-desktop/1.5.0/setup.exe",
+		PackageSHA256:  "package-150-sha256",
+		Mandatory:      true,
+		RolloutPercent: 0,
+	})
+
+	activateResp := activateDemoLicense(t, server, "mandatory-update-install", map[string]any{})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+	verifyResp := verifyLicenseTokenForApp(t, server, DemoAppID, activateResp.LicenseToken, "mandatory-update-install", "1.4.2", nil)
+	if !verifyResp.Allowed {
+		t.Fatalf("verify response = %#v, want allowed", verifyResp)
+	}
+	if verifyResp.Update == nil || !verifyResp.Update.Available || !verifyResp.Update.Required || verifyResp.Update.LatestVersion != "1.5.0" {
+		t.Fatalf("update info = %#v, want required 1.5.0 update", verifyResp.Update)
+	}
+}
+
+func TestVerifyReturnsRequiredUpdateBelowMinSupportedVersion(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	addDemoUpdateRelease(t, server, AppRelease{
+		ID:                  "rel_demo_nax_150_min_supported",
+		Version:             "1.5.0",
+		BuildNumber:         10500,
+		DownloadURL:         "https://download.example.com/nax-desktop/1.5.0/setup.exe",
+		PackageSHA256:       "package-150-sha256",
+		MinSupportedVersion: "1.5.0",
+		RolloutPercent:      0,
+	})
+
+	activateResp := activateDemoLicense(t, server, "min-supported-update-install", map[string]any{})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+	verifyResp := verifyLicenseTokenForApp(t, server, DemoAppID, activateResp.LicenseToken, "min-supported-update-install", "1.4.2", nil)
+	if !verifyResp.Allowed {
+		t.Fatalf("verify response = %#v, want allowed", verifyResp)
+	}
+	if verifyResp.Update == nil || !verifyResp.Update.Available || !verifyResp.Update.Required || verifyResp.Update.LatestVersion != "1.5.0" {
+		t.Fatalf("update info = %#v, want min-supported required 1.5.0 update", verifyResp.Update)
+	}
+}
+
+func TestBlockedAppVersionDeniesVerification(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	activateResp := activateDemoLicense(t, server, "blocked-version-install", map[string]any{})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+
+	server.mu.Lock()
+	release := server.findReleaseByIDLocked(DemoAppID, "rel_demo_nax_142")
+	if release == nil {
+		server.mu.Unlock()
+		t.Fatal("demo release not found")
+	}
+	release.Status = "blocked"
+	server.mu.Unlock()
+
+	verifyResp := verifyLicenseTokenForApp(t, server, DemoAppID, activateResp.LicenseToken, "blocked-version-install", "1.4.2", nil)
+	if verifyResp.Allowed || verifyResp.Code != "INTEGRITY_FAILED" {
+		t.Fatalf("verify response = %#v, want blocked release integrity denial", verifyResp)
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if !hasRiskEvent(server.data.RiskEvents, "app_version_blocked") {
+		t.Fatalf("app_version_blocked risk event not found in %#v", server.data.RiskEvents)
+	}
+}
+
 func TestResolveRiskEventWritesResolvedAtAndAuditLog(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -1157,6 +1280,97 @@ func activateLicenseForApp(t *testing.T, server *Server, appID string, licenseKe
 		t.Fatalf("decode activate response: %v", err)
 	}
 	return verifyResp
+}
+
+func verifyLicenseTokenForApp(t *testing.T, server *Server, appID string, licenseToken string, installID string, appVersion string, integrityOverrides map[string]any) VerifyResponse {
+	t.Helper()
+	challengeBody, err := json.Marshal(map[string]any{
+		"app_id":      appID,
+		"platform":    "windows",
+		"install_id":  installID,
+		"app_version": appVersion,
+	})
+	if err != nil {
+		t.Fatalf("marshal challenge body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/challenge", bytes.NewReader(challengeBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("challenge status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var challengeResp struct {
+		ChallengeID string `json:"challenge_id"`
+		Nonce       string `json:"nonce"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &challengeResp); err != nil {
+		t.Fatalf("decode challenge response: %v", err)
+	}
+
+	integrity := map[string]any{
+		"app_version": appVersion,
+	}
+	if appID == DemoAppID {
+		integrity["main_binary_hash"] = DemoBinaryHash
+		integrity["signer_thumbprint"] = DemoSigner
+	}
+	for key, value := range integrityOverrides {
+		integrity[key] = value
+	}
+	verifyBody, err := json.Marshal(map[string]any{
+		"app_id":        appID,
+		"platform":      "windows",
+		"license_token": licenseToken,
+		"challenge_id":  challengeResp.ChallengeID,
+		"nonce":         challengeResp.Nonce,
+		"device": map[string]any{
+			"install_id":        installID,
+			"fingerprint":       installID + "-fingerprint",
+			"os":                "windows",
+			"os_version":        "Windows 11",
+			"machine_name_hash": installID + "-machine",
+		},
+		"integrity": integrity,
+	})
+	if err != nil {
+		t.Fatalf("marshal verify body: %v", err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/verify", bytes.NewReader(verifyBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("verify status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var verifyResp VerifyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &verifyResp); err != nil {
+		t.Fatalf("decode verify response: %v", err)
+	}
+	return verifyResp
+}
+
+func addDemoUpdateRelease(t *testing.T, server *Server, release AppRelease) {
+	t.Helper()
+	now := time.Now()
+	if release.ID == "" {
+		release.ID = newID("rel")
+	}
+	release.AppID = DemoAppID
+	release.Platform = "windows"
+	if release.Channel == "" {
+		release.Channel = "production"
+	}
+	if release.Status == "" {
+		release.Status = "active"
+	}
+	if release.CreatedAt.IsZero() {
+		release.CreatedAt = now
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	server.data.Releases = append(server.data.Releases, release)
 }
 
 func hasRiskEvent(events []RiskEvent, eventType string) bool {

@@ -546,7 +546,15 @@ download_url
 ```
 
 - [ ] Admin UI 支持强制更新、最低支持版本、灰度比例的操作确认。
-- [ ] 增加 update 行为 smoke：普通更新、强制更新、版本封禁、最低版本。
+- [x] 增加 update 行为 smoke：普通更新、强制更新、版本封禁、最低版本。
+
+已落地：
+
+- `TestVerifyReturnsOptionalUpdateInfo` 覆盖普通更新时 `update.available=true` 且字段完整。
+- `TestVerifyReturnsRequiredUpdateForMandatoryRelease` 覆盖 `mandatory=true` 时 `update.required=true`。
+- `TestVerifyReturnsRequiredUpdateBelowMinSupportedVersion` 覆盖 `min_supported_version` 强制旧版本升级。
+- `TestBlockedAppVersionDeniesVerification` 覆盖 blocked release 拒绝客户端 verify 并记录 `app_version_blocked`。
+
 - [ ] 提供接入包导入说明，面向 VisionFlow 客户部署。
 
 ### P2：Release 与 CI 自动化补强
@@ -671,8 +679,8 @@ hash 字段缺失
 - [x] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。
 - [x] Release 能登记 VisionFlow `business_manifest_sha256`。
 - [x] Release schema/发布脚本能分别登记受保护 DB hash、assets hash、workflow hash。
-- [ ] 客户端 verify 返回 `update.available` 时字段完整。
-- [ ] `mandatory=true` 时客户端收到 `update.required=true`。
+- [x] 客户端 verify 返回 `update.available` 时字段完整。
+- [x] `mandatory=true` 时客户端收到 `update.required=true`。
 - [ ] Admin 登录、activate、verify 的限流或失败延迟生效。
 - [ ] 过期 challenge 会被清理。
 - [ ] 生产 CORS/HTTPS 配置有文档和模板。
@@ -681,9 +689,9 @@ hash 字段缺失
 
 - [ ] 客户授权包可生成并包含 license、entitlements、设备数、过期时间。
 - [ ] Release 字段缺失时 Admin/API 给出明确错误。
-- [ ] `min_supported_version` 能强制旧版本升级。
+- [x] `min_supported_version` 能强制旧版本升级。
 - [ ] `rollout_percent` 对同一设备结果稳定。
-- [ ] 版本 blocked 后客户端 verify 返回拒绝。
+- [x] 版本 blocked 后客户端 verify 返回拒绝。
 
 ### P3 验收
 
