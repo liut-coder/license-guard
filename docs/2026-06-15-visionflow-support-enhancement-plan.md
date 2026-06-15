@@ -431,7 +431,7 @@ visionflow-license-bundle.zip
 - 不包含 admin token。
 - 默认不包含生产 license key。
 
-已落地：现有 Admin UI 集成包下载接口会生成 secret-free zip，并包含 `.env.example`、`licenseguard.config.json`、`app_id.txt`、`endpoint.txt`、`public_key.txt`、`integration-checklist.md` 和 Go 接入骨架。
+已落地：现有 Admin UI 集成包下载接口会生成 secret-free zip，并包含 `.env.example`、`licenseguard.config.json`、`app_id.txt`、`endpoint.txt`、`public_key.txt`、`integration-checklist.md` 和 Go 接入骨架。测试已覆盖 SDK secret/hash、服务端私钥、admin token、默认 license key 和数据库凭据不进入默认接入包。
 
 - [x] 增加 Release 发布 CLI 或脚本。
 
@@ -768,7 +768,7 @@ hash 字段缺失
 - [ ] 使用部署模板可启动 PostgreSQL、迁移和 License Guard API。
 - [ ] `-key-dir` 持久化，重启服务后 public key 不变化。
 - [x] Admin UI 可下载 VisionFlow 接入包。
-- [ ] 接入包不包含 SDK secret、私钥、admin token、生产 license key。
+- [x] 接入包不包含 SDK secret、私钥、admin token、生产 license key。
 - [x] Admin UI 可查看和编辑 VisionFlow capability policy。
 - [x] Admin UI 可预览某个 license 对某个 capability 的最终结果。
 - [x] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。

@@ -1629,8 +1629,20 @@ func TestIntegrationBundleOmitsSecretsAndContainsSkeleton(t *testing.T) {
 		}
 	}
 	all := strings.Join(mapValues(files), "\n")
-	if strings.Contains(all, "secret_hash") || strings.Contains(all, "lgsk_") || strings.Contains(all, DemoLicenseKey) {
-		t.Fatalf("bundle leaked secret material or default license: %s", all)
+	privateKey := base64.StdEncoding.EncodeToString(server.privateKey)
+	leaks := []string{
+		"secret_hash",
+		"lgsk_",
+		DemoLicenseKey,
+		token,
+		privateKey,
+		"DATABASE_URL=",
+		"POSTGRES_PASSWORD=",
+	}
+	for _, leaked := range leaks {
+		if leaked != "" && strings.Contains(all, leaked) {
+			t.Fatalf("bundle leaked %q: %s", leaked, all)
+		}
 	}
 	if !strings.Contains(files[".env.example"], "LICENSE_GUARD_PUBLIC_KEY=") || !strings.Contains(files[".env.example"], "LICENSE_GUARD_APP_ID="+DemoAppID) {
 		t.Fatalf("env example missing public config: %s", files[".env.example"])
