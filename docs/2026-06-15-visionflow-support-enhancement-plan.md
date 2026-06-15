@@ -258,6 +258,25 @@ db_encryption_errors
 - License Guard 只接收加密 DB 打开后的完整性摘要，例如 protected table hash 和 business manifest hash。
 - DB 加密失败、密钥丢失、密钥不可读属于 VisionFlow 本地诊断/恢复问题；License Guard 会记录 `db_encryption_failed` 风险事件并返回 `INTEGRITY_FAILED`，不把它误判为 license 过期、吊销或暂停。
 
+已确认的 VisionFlow 本地 DB 加密方向：
+
+```text
+SQLCipher + 32 字节强随机 DB master key + Windows 系统安全区保存密钥
+```
+
+协作边界：
+
+| 项 | VisionFlow 职责 | License Guard 职责 |
+|---|---|---|
+| DB master key | 使用 `crypto/rand` 生成，不由 license key、App ID、机器码或固定 salt 派生 | 不生成、不保存、不下发、不恢复 |
+| 密钥保存 | Windows 首选 DPAPI CurrentUser 或 Credential Manager，只保存受系统保护的 key blob 或凭据引用 | 不把密钥写入接入包、日志、诊断报告或 API 请求 |
+| DB 打开 | 使用 SQLCipher 打开 runtime/config/asset DB，生产禁止静默 fallback 到明文 SQLite | 只接收 `db_encryption_status`、`db_encryption_errors` 诊断字段 |
+| 版本更新 | App Release 更新复用原 DB master key，不因 license 续期、换绑、吊销或离线宽限变化而旋转 | Release 只管理官方版本基线、hash、policy 和更新策略 |
+| 完整性 | 加密 DB 打开后继续计算受保护表、assets、workflow 和 business manifest hash | 和 Release 基线比对，异常时拒绝受控能力并记录风险事件 |
+| 恢复 | 提供旧明文库迁移、备份恢复、密钥损坏重置或导入恢复包流程 | Admin 侧展示风险和诊断，不承担客户本地 DB 数据恢复 |
+
+注意：SQLCipher 只提高本地 DB 静态读取和低成本改库门槛。核心业务配置仍必须依赖签名 manifest、Release 基线和 LicenseGate 执行门禁；否则客户端被 patch 后仍可能绕过本地检查。
+
 ### P0：VisionFlow 接入前置
 
 - [x] 修复 Windows DPAPI 缓存 bug。
