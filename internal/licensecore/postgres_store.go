@@ -73,6 +73,9 @@ func (s *PostgresStore) Load() (Data, error) {
 	if data.Licenses, err = queryLicenses(ctx, tx); err != nil {
 		return Data{}, err
 	}
+	if data.CapabilityPolicies, err = queryCapabilityPolicies(ctx, tx); err != nil {
+		return Data{}, err
+	}
 	if data.Devices, err = queryDevices(ctx, tx); err != nil {
 		return Data{}, err
 	}
@@ -266,6 +269,41 @@ func querySDKKeys(ctx context.Context, q sqlQuerier) ([]SDKKey, error) {
 			&item.CreatedAt,
 			&item.RotatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func queryCapabilityPolicies(ctx context.Context, q sqlQuerier) ([]CapabilityPolicy, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT app_id, capability, required_entitlement, mode, message,
+			limits_json, created_at, updated_at
+		FROM capability_policies
+		ORDER BY app_id, capability`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []CapabilityPolicy
+	for rows.Next() {
+		var item CapabilityPolicy
+		var limitsJSON []byte
+		if err := rows.Scan(
+			&item.AppID,
+			&item.Capability,
+			&item.RequiredEntitlement,
+			&item.Mode,
+			&item.Message,
+			&limitsJSON,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(limitsJSON, &item.LimitsJSON); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -515,6 +553,7 @@ func deletePostgresData(ctx context.Context, tx *sql.Tx) error {
 		"activations",
 		"devices",
 		"licenses",
+		"capability_policies",
 		"sdk_keys",
 		"app_releases",
 		"apps",
@@ -627,6 +666,29 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 			item.RotatedAt,
 		); err != nil {
 			return fmt.Errorf("insert sdk key %s: %w", item.ID, err)
+		}
+	}
+
+	for _, item := range data.CapabilityPolicies {
+		limitsJSON, err := jsonForDB(item.LimitsJSON, map[string]any{})
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO capability_policies (
+				app_id, capability, required_entitlement, mode, message,
+				limits_json, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+			item.AppID,
+			item.Capability,
+			item.RequiredEntitlement,
+			item.Mode,
+			item.Message,
+			limitsJSON,
+			item.CreatedAt,
+			item.UpdatedAt,
+		); err != nil {
+			return fmt.Errorf("insert capability policy %s/%s: %w", item.AppID, item.Capability, err)
 		}
 	}
 
@@ -809,6 +871,7 @@ func dataIsEmpty(data Data) bool {
 		len(data.Apps) == 0 &&
 		len(data.Releases) == 0 &&
 		len(data.Licenses) == 0 &&
+		len(data.CapabilityPolicies) == 0 &&
 		len(data.Devices) == 0 &&
 		len(data.Activations) == 0 &&
 		len(data.IntegrityReports) == 0 &&

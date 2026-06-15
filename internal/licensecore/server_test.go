@@ -3,6 +3,8 @@ package licensecore
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -525,6 +527,92 @@ func TestHeartbeatRecordsBusinessIntegrityAndDeniesTamperedStatus(t *testing.T) 
 	}
 }
 
+func TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+
+	body := []byte(`{"app_key":"app_visionflow_windows_prod","name":"VisionFlow Windows","platform":"windows","version":"0.1.0"}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/apps", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("app create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/apps/app_visionflow_windows_prod/capability-policies", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("capability policies status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Items []CapabilityPolicy `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode capability policies: %v", err)
+	}
+	if len(resp.Items) != 7 {
+		t.Fatalf("capability policy count = %d, want 7: %#v", len(resp.Items), resp.Items)
+	}
+	if !hasCapabilityPolicy(resp.Items, "automation.run", "visionflow.automation", "block") {
+		t.Fatalf("default automation.run policy not found in %#v", resp.Items)
+	}
+	if !hasCapabilityPolicy(resp.Items, "export.video", "visionflow.export", "watermark") {
+		t.Fatalf("default export.video policy not found in %#v", resp.Items)
+	}
+}
+
+func TestCapabilityPolicyDeniesMissingEntitlementAndSignsVerifyBundle(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+
+	upsertPayload := []byte(`{"items":[
+		{"capability":"automation.run","required_entitlement":"feature.pro","mode":"block","message":"allowed for pro"},
+		{"capability":"premium.run","required_entitlement":"visionflow.premium","mode":"allow","message":"should still require entitlement"}
+	]}`)
+	req := httptest.NewRequest(http.MethodPut, "/admin/apps/"+DemoAppID+"/capability-policies", bytes.NewReader(upsertPayload))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("capability policy upsert status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	activateResp := activateDemoLicense(t, server, "capability-policy-install", map[string]any{})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+	if activateResp.CapabilityPolicy == nil {
+		t.Fatal("verify response did not include signed capability policy bundle")
+	}
+	assertCapabilityPolicySignature(t, server.publicKey, *activateResp.CapabilityPolicy)
+	if !hasDecision(activateResp.CapabilityPolicy.Bundle.Decisions, "automation.run", true, "allow", "") {
+		t.Fatalf("automation.run decision missing or not allowed: %#v", activateResp.CapabilityPolicy.Bundle.Decisions)
+	}
+	if !hasDecision(activateResp.CapabilityPolicy.Bundle.Decisions, "premium.run", false, "block", "missing_entitlement") {
+		t.Fatalf("premium.run decision did not enforce missing entitlement: %#v", activateResp.CapabilityPolicy.Bundle.Decisions)
+	}
+
+	decision := capabilityCheck(t, server, activateResp.LicenseToken, "premium.run")
+	if decision.Allowed || decision.ConfiguredMode != "allow" || decision.EffectiveMode != "block" || decision.Reason != "missing_entitlement" {
+		t.Fatalf("premium.run capability decision = %#v, want missing entitlement denial with block effective mode", decision)
+	}
+	unknown := capabilityCheck(t, server, activateResp.LicenseToken, "unknown.capability")
+	if unknown.Allowed || unknown.EffectiveMode != "block" || unknown.Reason != "unknown_capability" {
+		t.Fatalf("unknown capability decision = %#v, want default deny", unknown)
+	}
+}
+
 func TestRotateSDKKeyReturnsSecretOnceAndWritesAuditLog(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -857,6 +945,65 @@ func hasRiskEvent(events []RiskEvent, eventType string) bool {
 		}
 	}
 	return false
+}
+
+func hasCapabilityPolicy(items []CapabilityPolicy, capability string, entitlement string, mode string) bool {
+	for _, item := range items {
+		if item.Capability == capability && item.RequiredEntitlement == entitlement && item.Mode == mode {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDecision(items []CapabilityDecision, capability string, allowed bool, effectiveMode string, reason string) bool {
+	for _, item := range items {
+		if item.Capability == capability && item.Allowed == allowed && item.EffectiveMode == effectiveMode && item.Reason == reason {
+			return true
+		}
+	}
+	return false
+}
+
+func assertCapabilityPolicySignature(t *testing.T, publicKey ed25519.PublicKey, bundle SignedCapabilityPolicyBundle) {
+	t.Helper()
+	payload, err := json.Marshal(bundle.Bundle)
+	if err != nil {
+		t.Fatalf("marshal policy bundle: %v", err)
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(bundle.Signature)
+	if err != nil {
+		t.Fatalf("decode policy signature: %v", err)
+	}
+	if !ed25519.Verify(publicKey, payload, signature) {
+		t.Fatalf("policy signature did not verify")
+	}
+}
+
+func capabilityCheck(t *testing.T, server *Server, token string, capability string) CapabilityDecision {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"app_id":        DemoAppID,
+		"license_token": token,
+		"capability":    capability,
+	})
+	if err != nil {
+		t.Fatalf("marshal capability check body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/capability/check", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("capability check status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Decision CapabilityDecision `json:"decision"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode capability check response: %v", err)
+	}
+	return resp.Decision
 }
 
 func getAppDetailMap(t *testing.T, server *Server, token string) map[string]any {

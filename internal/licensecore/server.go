@@ -113,6 +113,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleVerify(w, r)
 	case path == "/v1/heartbeat" && r.Method == http.MethodPost:
 		s.handleHeartbeat(w, r)
+	case path == "/v1/capability/check" && r.Method == http.MethodPost:
+		s.handleCapabilityCheck(w, r)
 	case path == "/v1/deactivate" && r.Method == http.MethodPost:
 		s.handleDeactivate(w, r)
 	default:
@@ -402,6 +404,9 @@ func (s *Server) handleApps(w http.ResponseWriter, r *http.Request, adminID stri
 		s.data.Releases = append(s.data.Releases, release)
 		sdkKey, sdkSecret := newSDKKey(app.AppKey, s.publicKeyString(), now, false)
 		s.data.SDKKeys = append(s.data.SDKKeys, sdkKey)
+		if isVisionFlowAppKey(app.AppKey) {
+			s.ensureDefaultVisionFlowPoliciesLocked(app.AppKey, now)
+		}
 		s.auditLocked(adminID, "app.create", "app", app.AppKey, r, map[string]any{"name": app.Name})
 		err := s.saveLocked()
 		s.mu.Unlock()
@@ -435,6 +440,16 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 
 	if len(parts) == 2 && parts[1] == "integration-bundle" && r.Method == http.MethodPost {
 		s.handleIntegrationBundle(w, r, appID)
+		return
+	}
+
+	if len(parts) == 3 && parts[1] == "capability-policies" && parts[2] == "visionflow-defaults" && r.Method == http.MethodPost {
+		s.handleVisionFlowCapabilityDefaults(w, r, appID, adminID)
+		return
+	}
+
+	if len(parts) == 2 && parts[1] == "capability-policies" {
+		s.handleCapabilityPolicies(w, r, appID, adminID)
 		return
 	}
 
@@ -561,9 +576,86 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 	releases := s.releasesForAppLocked(appID)
 	sdkKeys := s.sdkKeyViewsForAppLocked(appID)
 	licenses := s.licensesForAppLocked(appID)
+	capabilityPolicies := s.capabilityPoliciesForAppLocked(appID)
 	s.mu.Unlock()
 
-	writeJSON(w, http.StatusOK, map[string]any{"app": app, "releases": releases, "licenses": licenses, "sdk_keys": sdkKeys})
+	writeJSON(w, http.StatusOK, map[string]any{"app": app, "releases": releases, "licenses": licenses, "sdk_keys": sdkKeys, "capability_policies": capabilityPolicies})
+}
+
+func (s *Server) handleCapabilityPolicies(w http.ResponseWriter, r *http.Request, appID string, adminID string) {
+	switch r.Method {
+	case http.MethodGet:
+		s.mu.Lock()
+		app := s.findAppLocked(appID)
+		if app == nil {
+			s.mu.Unlock()
+			writeError(w, http.StatusNotFound, "APP_NOT_FOUND", "app not found")
+			return
+		}
+		items := s.capabilityPoliciesForAppLocked(appID)
+		s.mu.Unlock()
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	case http.MethodPut, http.MethodPatch:
+		var req struct {
+			Items []CapabilityPolicy `json:"items"`
+		}
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+		if len(req.Items) == 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "items are required")
+			return
+		}
+		now := time.Now()
+		policies := make([]CapabilityPolicy, 0, len(req.Items))
+		for _, item := range req.Items {
+			policy, err := normalizeCapabilityPolicy(appID, item, now)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "INVALID_POLICY", err.Error())
+				return
+			}
+			policies = append(policies, policy)
+		}
+
+		s.mu.Lock()
+		if s.findAppLocked(appID) == nil {
+			s.mu.Unlock()
+			writeError(w, http.StatusNotFound, "APP_NOT_FOUND", "app not found")
+			return
+		}
+		s.upsertCapabilityPoliciesLocked(policies)
+		items := s.capabilityPoliciesForAppLocked(appID)
+		s.auditLocked(adminID, "capability_policy.upsert", "app", appID, r, map[string]any{"count": len(policies)})
+		err := s.saveLocked()
+		s.mu.Unlock()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "SAVE_FAILED", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+	}
+}
+
+func (s *Server) handleVisionFlowCapabilityDefaults(w http.ResponseWriter, r *http.Request, appID string, adminID string) {
+	now := time.Now()
+	s.mu.Lock()
+	if s.findAppLocked(appID) == nil {
+		s.mu.Unlock()
+		writeError(w, http.StatusNotFound, "APP_NOT_FOUND", "app not found")
+		return
+	}
+	added := s.ensureDefaultVisionFlowPoliciesLocked(appID, now)
+	items := s.capabilityPoliciesForAppLocked(appID)
+	s.auditLocked(adminID, "capability_policy.seed_visionflow_defaults", "app", appID, r, map[string]any{"added": added})
+	err := s.saveLocked()
+	s.mu.Unlock()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "SAVE_FAILED", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "added": added})
 }
 
 func (s *Server) handleAppOnboarding(w http.ResponseWriter, _ *http.Request, appID string) {
@@ -1152,6 +1244,50 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (s *Server) handleCapabilityCheck(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AppID        string `json:"app_id"`
+		LicenseToken string `json:"license_token"`
+		Capability   string `json:"capability"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	req.Capability = strings.TrimSpace(req.Capability)
+	if req.LicenseToken == "" || req.Capability == "" {
+		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "license_token and capability are required")
+		return
+	}
+	claims, err := VerifyLicenseToken(s.publicKey, req.LicenseToken, false)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "INVALID_TOKEN", err.Error())
+		return
+	}
+	if req.AppID != "" && claims.AppID != req.AppID {
+		writeError(w, http.StatusForbidden, "APP_MISMATCH", "token app does not match request app")
+		return
+	}
+
+	s.mu.Lock()
+	lic := s.findLicenseByIDLocked(claims.LicenseID)
+	if lic == nil || lic.AppID != claims.AppID || lic.Status != "active" {
+		s.mu.Unlock()
+		writeError(w, http.StatusForbidden, "LICENSE_NOT_ACTIVE", "授权不存在或不可用")
+		return
+	}
+	activation := s.findActivationLocked(claims.LicenseID, claims.DeviceID)
+	if activation == nil || activation.ActivationStatus != "active" {
+		s.mu.Unlock()
+		writeError(w, http.StatusForbidden, "ACTIVATION_NOT_ACTIVE", "授权激活不存在或不可用")
+		return
+	}
+	policy := s.findCapabilityPolicyLocked(claims.AppID, req.Capability)
+	decision := capabilityDecision(policy, lic.Entitlements, req.Capability)
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{"decision": decision})
+}
+
 func (s *Server) handleDeactivate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		AppID        string `json:"app_id"`
@@ -1352,6 +1488,11 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "TOKEN_SIGN_FAILED", err.Error())
 		return
 	}
+	capabilityPolicy, err := s.signedCapabilityPolicyBundleLocked(app.AppKey, lic.ID, device.ID, lic.Entitlements, expiresAt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "POLICY_SIGN_FAILED", err.Error())
+		return
+	}
 
 	err = s.saveLocked()
 	if err != nil {
@@ -1365,6 +1506,7 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 		ExpiresAt:         &expiresAt,
 		OfflineGraceUntil: &graceUntil,
 		Entitlements:      lic.Entitlements,
+		CapabilityPolicy:  capabilityPolicy,
 		DeviceStatus:      device.Status,
 		Risk:              risk,
 		Update:            s.updateInfoLocked(app.AppKey, input.Platform, input.Integrity.AppVersion, device.ID),
@@ -1512,6 +1654,249 @@ func integrityRequestHasEvidence(integrity IntegrityRequest) bool {
 		integrity.DebuggerDetected ||
 		len(integrity.SuspiciousModules) > 0 ||
 		len(integrity.VMIndicators) > 0
+}
+
+func normalizeCapabilityPolicy(appID string, item CapabilityPolicy, now time.Time) (CapabilityPolicy, error) {
+	capability := strings.TrimSpace(item.Capability)
+	requiredEntitlement := strings.TrimSpace(item.RequiredEntitlement)
+	mode := normalizeCapabilityPolicyMode(item.Mode)
+	if capability == "" {
+		return CapabilityPolicy{}, errors.New("capability is required")
+	}
+	if requiredEntitlement == "" {
+		return CapabilityPolicy{}, errors.New("required_entitlement is required")
+	}
+	if !validCapabilityPolicyMode(mode) {
+		return CapabilityPolicy{}, fmt.Errorf("unsupported mode %q", item.Mode)
+	}
+	limits := cloneLimitsJSON(item.LimitsJSON)
+	if limits == nil {
+		limits = map[string]any{}
+	}
+	return CapabilityPolicy{
+		AppID:               appID,
+		Capability:          capability,
+		RequiredEntitlement: requiredEntitlement,
+		Mode:                mode,
+		Message:             strings.TrimSpace(item.Message),
+		LimitsJSON:          limits,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}, nil
+}
+
+func normalizeCapabilityPolicyMode(mode string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		return "block"
+	}
+	return mode
+}
+
+func validCapabilityPolicyMode(mode string) bool {
+	switch mode {
+	case "allow", "block", "hide", "readonly", "degrade", "watermark", "warn":
+		return true
+	default:
+		return false
+	}
+}
+
+func isVisionFlowAppKey(appID string) bool {
+	appID = strings.ToLower(strings.TrimSpace(appID))
+	return appID == "app_visionflow_windows_prod" || strings.HasPrefix(appID, "app_visionflow_")
+}
+
+func defaultVisionFlowCapabilityPolicies(appID string, now time.Time) []CapabilityPolicy {
+	defaults := []struct {
+		capability  string
+		entitlement string
+		mode        string
+		message     string
+	}{
+		{"automation.run", "visionflow.automation", "block", "当前 License 未包含自动化任务能力"},
+		{"automation.resume", "visionflow.automation", "block", "当前 License 未包含任务恢复能力"},
+		{"automation.batch", "visionflow.batch", "block", "当前 License 未包含批量任务能力"},
+		{"script.execute", "visionflow.automation", "block", "当前 License 未包含脚本执行能力"},
+		{"export.video", "visionflow.export", "watermark", "当前 License 未包含无水印导出能力"},
+		{"plugin.install", "visionflow.plugin", "block", "当前 License 未包含插件安装能力"},
+		{"update.skipMandatory", "visionflow.update", "block", "当前 License 不允许跳过强制更新"},
+	}
+	policies := make([]CapabilityPolicy, 0, len(defaults))
+	for _, item := range defaults {
+		policies = append(policies, CapabilityPolicy{
+			AppID:               appID,
+			Capability:          item.capability,
+			RequiredEntitlement: item.entitlement,
+			Mode:                item.mode,
+			Message:             item.message,
+			LimitsJSON:          map[string]any{},
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		})
+	}
+	return policies
+}
+
+func (s *Server) upsertCapabilityPoliciesLocked(policies []CapabilityPolicy) {
+	for _, policy := range policies {
+		policy.Mode = normalizeCapabilityPolicyMode(policy.Mode)
+		if policy.LimitsJSON == nil {
+			policy.LimitsJSON = map[string]any{}
+		}
+		updated := false
+		for i := range s.data.CapabilityPolicies {
+			if s.data.CapabilityPolicies[i].AppID == policy.AppID && s.data.CapabilityPolicies[i].Capability == policy.Capability {
+				policy.CreatedAt = s.data.CapabilityPolicies[i].CreatedAt
+				if policy.CreatedAt.IsZero() {
+					policy.CreatedAt = policy.UpdatedAt
+				}
+				s.data.CapabilityPolicies[i] = policy
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			if policy.CreatedAt.IsZero() {
+				policy.CreatedAt = policy.UpdatedAt
+			}
+			s.data.CapabilityPolicies = append(s.data.CapabilityPolicies, policy)
+		}
+	}
+}
+
+func (s *Server) ensureDefaultVisionFlowPoliciesLocked(appID string, now time.Time) int {
+	added := 0
+	for _, policy := range defaultVisionFlowCapabilityPolicies(appID, now) {
+		if s.findCapabilityPolicyLocked(appID, policy.Capability) != nil {
+			continue
+		}
+		s.data.CapabilityPolicies = append(s.data.CapabilityPolicies, policy)
+		added++
+	}
+	return added
+}
+
+func (s *Server) capabilityPoliciesForAppLocked(appID string) []CapabilityPolicy {
+	items := []CapabilityPolicy{}
+	for _, policy := range s.data.CapabilityPolicies {
+		if policy.AppID == appID {
+			items = append(items, policy)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Capability < items[j].Capability
+	})
+	return items
+}
+
+func (s *Server) findCapabilityPolicyLocked(appID string, capability string) *CapabilityPolicy {
+	for i := range s.data.CapabilityPolicies {
+		if s.data.CapabilityPolicies[i].AppID == appID && s.data.CapabilityPolicies[i].Capability == capability {
+			return &s.data.CapabilityPolicies[i]
+		}
+	}
+	return nil
+}
+
+func (s *Server) signedCapabilityPolicyBundleLocked(appID string, licenseID string, deviceID string, entitlements []string, expiresAt time.Time) (*SignedCapabilityPolicyBundle, error) {
+	policies := s.capabilityPoliciesForAppLocked(appID)
+	if len(policies) == 0 {
+		return nil, nil
+	}
+	decisions := make([]CapabilityDecision, 0, len(policies))
+	for i := range policies {
+		decision := capabilityDecision(&policies[i], entitlements, policies[i].Capability)
+		decisions = append(decisions, decision)
+	}
+	bundle := CapabilityPolicyBundle{
+		AppID:        appID,
+		LicenseID:    licenseID,
+		DeviceID:     deviceID,
+		Entitlements: append([]string(nil), entitlements...),
+		Decisions:    decisions,
+		IssuedAt:     time.Now().Unix(),
+		ExpiresAt:    expiresAt.Unix(),
+	}
+	signature, err := signCapabilityPolicyBundle(s.privateKey, bundle)
+	if err != nil {
+		return nil, err
+	}
+	return &SignedCapabilityPolicyBundle{
+		Alg:       "EdDSA",
+		KeyType:   "Ed25519",
+		Bundle:    bundle,
+		Signature: signature,
+	}, nil
+}
+
+func signCapabilityPolicyBundle(privateKey ed25519.PrivateKey, bundle CapabilityPolicyBundle) (string, error) {
+	payload, err := json.Marshal(bundle)
+	if err != nil {
+		return "", err
+	}
+	signature := ed25519.Sign(privateKey, payload)
+	return base64.RawURLEncoding.EncodeToString(signature), nil
+}
+
+func capabilityDecision(policy *CapabilityPolicy, entitlements []string, capability string) CapabilityDecision {
+	if policy == nil {
+		return CapabilityDecision{
+			Capability:     capability,
+			ConfiguredMode: "block",
+			EffectiveMode:  "block",
+			Allowed:        false,
+			Reason:         "unknown_capability",
+			Message:        "Capability is not registered",
+		}
+	}
+	mode := normalizeCapabilityPolicyMode(policy.Mode)
+	if !validCapabilityPolicyMode(mode) {
+		mode = "block"
+	}
+	decision := CapabilityDecision{
+		Capability:          policy.Capability,
+		RequiredEntitlement: policy.RequiredEntitlement,
+		ConfiguredMode:      mode,
+		Message:             policy.Message,
+		LimitsJSON:          cloneLimitsJSON(policy.LimitsJSON),
+	}
+	if hasEntitlement(entitlements, policy.RequiredEntitlement) {
+		decision.Allowed = true
+		decision.EffectiveMode = "allow"
+		return decision
+	}
+	decision.Allowed = false
+	decision.Reason = "missing_entitlement"
+	decision.EffectiveMode = mode
+	if decision.EffectiveMode == "allow" {
+		decision.EffectiveMode = "block"
+	}
+	return decision
+}
+
+func hasEntitlement(entitlements []string, required string) bool {
+	required = strings.TrimSpace(required)
+	if required == "" {
+		return true
+	}
+	for _, entitlement := range entitlements {
+		if entitlement == required {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneLimitsJSON(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
 
 func (s *Server) updateInfoLocked(appID string, platform string, currentVersion string, deviceID string) *UpdateInfo {
@@ -1671,6 +2056,9 @@ func (s *Server) ensureLoadedDefaults() error {
 		}
 		if activeKey.PublicKey != s.publicKeyString() {
 			activeKey.PublicKey = s.publicKeyString()
+			changed = true
+		}
+		if isVisionFlowAppKey(app.AppKey) && s.ensureDefaultVisionFlowPoliciesLocked(app.AppKey, now) > 0 {
 			changed = true
 		}
 	}

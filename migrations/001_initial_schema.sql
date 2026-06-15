@@ -65,6 +65,21 @@ CREATE INDEX IF NOT EXISTS idx_licenses_app ON licenses(app_id);
 CREATE INDEX IF NOT EXISTS idx_licenses_status ON licenses(status);
 CREATE INDEX IF NOT EXISTS idx_licenses_owner ON licenses(owner_type, owner_ref);
 
+CREATE TABLE IF NOT EXISTS capability_policies (
+  app_id text NOT NULL REFERENCES apps(app_key) ON DELETE CASCADE,
+  capability text NOT NULL,
+  required_entitlement text NOT NULL,
+  mode text NOT NULL,
+  message text NOT NULL DEFAULT '',
+  limits_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  PRIMARY KEY(app_id, capability)
+);
+
+CREATE INDEX IF NOT EXISTS idx_capability_policies_app ON capability_policies(app_id);
+CREATE INDEX IF NOT EXISTS idx_capability_policies_entitlement ON capability_policies(app_id, required_entitlement);
+
 CREATE TABLE IF NOT EXISTS devices (
   id text PRIMARY KEY,
   device_fingerprint_hash text NOT NULL UNIQUE,

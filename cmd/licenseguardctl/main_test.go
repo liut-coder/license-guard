@@ -85,6 +85,7 @@ func TestVisionFlowBootstrapCreatesUsableEnv(t *testing.T) {
 	var appCreated bool
 	var releasePatched bool
 	var licenseCreated bool
+	var policiesSeeded bool
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -106,6 +107,16 @@ func TestVisionFlowBootstrapCreatesUsableEnv(t *testing.T) {
 					"platform": "windows",
 					"version":  "0.1.0",
 				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/admin/apps/app_visionflow_windows_prod/capability-policies/visionflow-defaults":
+			policiesSeeded = true
+			writeTestJSON(t, w, map[string]any{
+				"added": 7,
+				"items": []map[string]any{{
+					"capability":           "automation.run",
+					"required_entitlement": "visionflow.automation",
+					"mode":                 "block",
+				}},
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/admin/apps/app_visionflow_windows_prod":
 			writeTestJSON(t, w, map[string]any{
@@ -153,8 +164,8 @@ func TestVisionFlowBootstrapCreatesUsableEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !appCreated || !releasePatched || !licenseCreated {
-		t.Fatalf("flow not completed: appCreated=%v releasePatched=%v licenseCreated=%v", appCreated, releasePatched, licenseCreated)
+	if !appCreated || !policiesSeeded || !releasePatched || !licenseCreated {
+		t.Fatalf("flow not completed: appCreated=%v policiesSeeded=%v releasePatched=%v licenseCreated=%v", appCreated, policiesSeeded, releasePatched, licenseCreated)
 	}
 	env := out.String()
 	for _, want := range []string{

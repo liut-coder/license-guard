@@ -263,21 +263,22 @@ type visionFlowBootstrapInput struct {
 }
 
 type visionFlowBootstrapResult struct {
-	AppID            string            `json:"app_id"`
-	Endpoint         string            `json:"endpoint"`
-	PublicKey        string            `json:"public_key"`
-	Version          string            `json:"version"`
-	BinaryHash       string            `json:"binary_hash"`
-	SignerThumbprint string            `json:"signer_thumbprint"`
-	LicenseKey       string            `json:"license_key"`
-	Entitlements     []string          `json:"entitlements"`
-	AppCreated       bool              `json:"app_created"`
-	ReleaseID        string            `json:"release_id,omitempty"`
-	ReleaseCreated   bool              `json:"release_created"`
-	ReleasePatched   bool              `json:"release_patched"`
-	LicenseID        string            `json:"license_id,omitempty"`
-	ExpiresAt        string            `json:"expires_at"`
-	VisionFlowEnv    map[string]string `json:"visionflow_env"`
+	AppID              string            `json:"app_id"`
+	Endpoint           string            `json:"endpoint"`
+	PublicKey          string            `json:"public_key"`
+	Version            string            `json:"version"`
+	BinaryHash         string            `json:"binary_hash"`
+	SignerThumbprint   string            `json:"signer_thumbprint"`
+	LicenseKey         string            `json:"license_key"`
+	Entitlements       []string          `json:"entitlements"`
+	AppCreated         bool              `json:"app_created"`
+	ReleaseID          string            `json:"release_id,omitempty"`
+	ReleaseCreated     bool              `json:"release_created"`
+	ReleasePatched     bool              `json:"release_patched"`
+	CapabilityPolicies int               `json:"capability_policies"`
+	LicenseID          string            `json:"license_id,omitempty"`
+	ExpiresAt          string            `json:"expires_at"`
+	VisionFlowEnv      map[string]string `json:"visionflow_env"`
 }
 
 type adminApp struct {
@@ -374,6 +375,10 @@ func bootstrapVisionFlow(ctx context.Context, input visionFlowBootstrapInput) (v
 	if err != nil {
 		return visionFlowBootstrapResult{}, err
 	}
+	capabilityPolicies, err := ensureVisionFlowCapabilityDefaults(ctx, baseURL, token, input.appID)
+	if err != nil {
+		return visionFlowBootstrapResult{}, err
+	}
 	detail, err := fetchAppDetail(ctx, baseURL, token, input.appID)
 	if err != nil {
 		return visionFlowBootstrapResult{}, err
@@ -401,21 +406,22 @@ func bootstrapVisionFlow(ctx context.Context, input visionFlowBootstrapInput) (v
 		"VISIONFLOW_LICENSE_KEY":          licenseKey,
 	}
 	return visionFlowBootstrapResult{
-		AppID:            input.appID,
-		Endpoint:         input.endpoint,
-		PublicKey:        publicKey,
-		Version:          input.version,
-		BinaryHash:       input.binaryHash,
-		SignerThumbprint: input.signerThumbprint,
-		LicenseKey:       licenseKey,
-		Entitlements:     input.entitlements,
-		AppCreated:       appCreated,
-		ReleaseID:        release.ID,
-		ReleaseCreated:   releaseCreated,
-		ReleasePatched:   releasePatched,
-		LicenseID:        licenseID,
-		ExpiresAt:        expiresAt,
-		VisionFlowEnv:    env,
+		AppID:              input.appID,
+		Endpoint:           input.endpoint,
+		PublicKey:          publicKey,
+		Version:            input.version,
+		BinaryHash:         input.binaryHash,
+		SignerThumbprint:   input.signerThumbprint,
+		LicenseKey:         licenseKey,
+		Entitlements:       input.entitlements,
+		AppCreated:         appCreated,
+		ReleaseID:          release.ID,
+		ReleaseCreated:     releaseCreated,
+		ReleasePatched:     releasePatched,
+		CapabilityPolicies: capabilityPolicies,
+		LicenseID:          licenseID,
+		ExpiresAt:          expiresAt,
+		VisionFlowEnv:      env,
 	}, nil
 }
 
@@ -507,6 +513,21 @@ func fetchAppDetail(ctx context.Context, baseURL string, token string, appID str
 	var detail adminAppDetail
 	err := getAdminJSON(ctx, baseURL, token, "/admin/apps/"+url.PathEscape(appID), &detail)
 	return detail, err
+}
+
+func ensureVisionFlowCapabilityDefaults(ctx context.Context, baseURL string, token string, appID string) (int, error) {
+	var response struct {
+		Items []map[string]any `json:"items"`
+		Added int              `json:"added"`
+	}
+	err := postJSON(ctx, baseURL+"/admin/apps/"+url.PathEscape(appID)+"/capability-policies/visionflow-defaults", token, map[string]any{}, &response)
+	if err != nil {
+		return 0, err
+	}
+	if response.Added > 0 {
+		return response.Added, nil
+	}
+	return len(response.Items), nil
 }
 
 func ensureVisionFlowRelease(ctx context.Context, baseURL string, token string, input visionFlowBootstrapInput, releases []adminRelease) (adminRelease, bool, bool, error) {

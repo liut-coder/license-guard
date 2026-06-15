@@ -82,6 +82,17 @@ type License struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
+type CapabilityPolicy struct {
+	AppID               string         `json:"app_id"`
+	Capability          string         `json:"capability"`
+	RequiredEntitlement string         `json:"required_entitlement"`
+	Mode                string         `json:"mode"`
+	Message             string         `json:"message"`
+	LimitsJSON          map[string]any `json:"limits_json,omitempty"`
+	CreatedAt           time.Time      `json:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at"`
+}
+
 type Device struct {
 	ID                    string    `json:"id"`
 	DeviceFingerprintHash string    `json:"device_fingerprint_hash"`
@@ -169,17 +180,18 @@ type SystemSettings struct {
 }
 
 type Data struct {
-	Admins           []Admin           `json:"admins"`
-	Apps             []App             `json:"apps"`
-	Releases         []AppRelease      `json:"releases"`
-	SDKKeys          []SDKKey          `json:"sdk_keys"`
-	Licenses         []License         `json:"licenses"`
-	Devices          []Device          `json:"devices"`
-	Activations      []Activation      `json:"activations"`
-	IntegrityReports []IntegrityReport `json:"integrity_reports"`
-	RiskEvents       []RiskEvent       `json:"risk_events"`
-	AuditLogs        []AuditLog        `json:"audit_logs"`
-	Settings         SystemSettings    `json:"settings"`
+	Admins             []Admin            `json:"admins"`
+	Apps               []App              `json:"apps"`
+	Releases           []AppRelease       `json:"releases"`
+	SDKKeys            []SDKKey           `json:"sdk_keys"`
+	Licenses           []License          `json:"licenses"`
+	CapabilityPolicies []CapabilityPolicy `json:"capability_policies"`
+	Devices            []Device           `json:"devices"`
+	Activations        []Activation       `json:"activations"`
+	IntegrityReports   []IntegrityReport  `json:"integrity_reports"`
+	RiskEvents         []RiskEvent        `json:"risk_events"`
+	AuditLogs          []AuditLog         `json:"audit_logs"`
+	Settings           SystemSettings     `json:"settings"`
 }
 
 type Challenge struct {
@@ -231,17 +243,46 @@ type UpdateInfo struct {
 	ReleaseNotes  string `json:"release_notes,omitempty"`
 }
 
+type CapabilityDecision struct {
+	Capability          string         `json:"capability"`
+	RequiredEntitlement string         `json:"required_entitlement"`
+	ConfiguredMode      string         `json:"configured_mode"`
+	EffectiveMode       string         `json:"effective_mode"`
+	Allowed             bool           `json:"allowed"`
+	Reason              string         `json:"reason,omitempty"`
+	Message             string         `json:"message,omitempty"`
+	LimitsJSON          map[string]any `json:"limits_json,omitempty"`
+}
+
+type CapabilityPolicyBundle struct {
+	AppID        string               `json:"app_id"`
+	LicenseID    string               `json:"license_id"`
+	DeviceID     string               `json:"device_id"`
+	Entitlements []string             `json:"entitlements"`
+	Decisions    []CapabilityDecision `json:"decisions"`
+	IssuedAt     int64                `json:"issued_at"`
+	ExpiresAt    int64                `json:"expires_at"`
+}
+
+type SignedCapabilityPolicyBundle struct {
+	Alg       string                 `json:"alg"`
+	KeyType   string                 `json:"key_type"`
+	Bundle    CapabilityPolicyBundle `json:"bundle"`
+	Signature string                 `json:"signature"`
+}
+
 type VerifyResponse struct {
-	Allowed           bool        `json:"allowed"`
-	Code              string      `json:"code,omitempty"`
-	Message           string      `json:"message,omitempty"`
-	LicenseToken      string      `json:"license_token,omitempty"`
-	ExpiresAt         *time.Time  `json:"expires_at,omitempty"`
-	OfflineGraceUntil *time.Time  `json:"offline_grace_until,omitempty"`
-	Entitlements      []string    `json:"entitlements,omitempty"`
-	DeviceStatus      string      `json:"device_status,omitempty"`
-	Risk              RiskResult  `json:"risk"`
-	Update            *UpdateInfo `json:"update,omitempty"`
+	Allowed           bool                          `json:"allowed"`
+	Code              string                        `json:"code,omitempty"`
+	Message           string                        `json:"message,omitempty"`
+	LicenseToken      string                        `json:"license_token,omitempty"`
+	ExpiresAt         *time.Time                    `json:"expires_at,omitempty"`
+	OfflineGraceUntil *time.Time                    `json:"offline_grace_until,omitempty"`
+	Entitlements      []string                      `json:"entitlements,omitempty"`
+	CapabilityPolicy  *SignedCapabilityPolicyBundle `json:"capability_policy,omitempty"`
+	DeviceStatus      string                        `json:"device_status,omitempty"`
+	Risk              RiskResult                    `json:"risk"`
+	Update            *UpdateInfo                   `json:"update,omitempty"`
 }
 
 type OnboardingStep struct {

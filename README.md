@@ -179,7 +179,7 @@ The current VisionFlow-facing roadmap is tracked in `docs/2026-06-15-visionflow-
 
 ## VisionFlow Bootstrap CLI
 
-`licenseguardctl` can create or reuse the VisionFlow app, patch the local development release with integrity metadata, issue a development license, fetch the public key, and print env values VisionFlow can use directly:
+`licenseguardctl` can create or reuse the VisionFlow app, seed the default capability policies, patch the local development release with integrity metadata, issue a development license, fetch the public key, and print env values VisionFlow can use directly:
 
 ```bash
 go run ./cmd/licenseguardctl visionflow bootstrap \

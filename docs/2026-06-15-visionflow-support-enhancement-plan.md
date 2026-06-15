@@ -7,7 +7,7 @@
 
 ## 0. 当前版本基线
 
-- 当前阶段：License Guard 已具备服务端、Admin UI、PostgreSQL 迁移、Windows Go SDK、demo、smoke、部署模板、集成包、Release 发布 CLI 和 VisionFlow 业务完整性摘要上报；VisionFlow 授权链路已能本地联调，但试用配置和授权拦截体验仍偏工程化。
+- 当前阶段：License Guard 已具备服务端、Admin UI、PostgreSQL 迁移、Windows Go SDK、demo、smoke、部署模板、集成包、Release 发布 CLI、VisionFlow 业务完整性摘要上报和 Capability Policy 服务端模型；VisionFlow 授权链路已能本地联调，但策略可视化和授权诊断仍需继续产品化。
 - 当前目标：将 License Guard 从“授权 API + SDK”升级为 VisionFlow 的授权产品化控制中心，覆盖一键试用、能力策略、可视化配置、Release 自动化、授权诊断和生产安全基线。
 - 分支策略：用户确认 `license-guard` 使用 `main`。
 - 接入约束：不追求完全零配置；客户端至少需要可信的 Endpoint、App ID、Public Key 和 license 激活入口。
@@ -122,7 +122,7 @@ VISIONFLOW_LICENSE_KEY=...
 - 支持输出 env 或写入 `-write-env`
 - 验证：`go test ./cmd/licenseguardctl`
 
-- [ ] 增加 VisionFlow 默认产品模板。
+- [x] 增加 VisionFlow 默认产品模板。
 
 默认 entitlement：
 
@@ -146,7 +146,14 @@ visionflow.update
 | `plugin.install` | `visionflow.plugin` | block | 插件安装 |
 | `update.skipMandatory` | `visionflow.update` | block | 跳过强制更新 |
 
-- [ ] 增加 Capability Policy 服务端模型和 API。
+已落地：
+
+- 创建 `app_visionflow_*` App 时自动补齐默认策略。
+- 提供 `POST /admin/apps/{app_id}/capability-policies/visionflow-defaults`，用于幂等补齐 VisionFlow 默认策略，不覆盖已有策略。
+- `licenseguardctl visionflow bootstrap` 会调用默认策略补齐 endpoint，已有 VisionFlow App 不重启服务也能补齐策略。
+- 验证：`go test ./cmd/licenseguardctl`、`go test ./internal/licensecore`。
+
+- [x] 增加 Capability Policy 服务端模型和 API。
 
 首期字段：
 
@@ -166,6 +173,17 @@ updated_at
 - `mode=allow` 不能绕过 `required_entitlement`。
 - 下发给客户端的 policy 必须有签名或绑定在签名 license 响应中。
 - policy 允许降级、隐藏、只读和提示，但不能授予 license 没有的权益。
+
+已落地：
+
+- 新增 `capability_policies` 存储模型和 PostgreSQL 迁移。
+- 提供 `GET /admin/apps/{app_id}/capability-policies` 查看策略。
+- 提供 `PUT/PATCH /admin/apps/{app_id}/capability-policies` 批量 upsert 策略。
+- `/v1/activate` 和 `/v1/verify` 返回签名的 `capability_policy` 决策包，客户端可用 `/v1/public-key` 返回的 Ed25519 公钥验签。
+- 提供 `POST /v1/capability/check`，按 license token 和 capability 返回服务端决策。
+- 未登记 capability 默认 `allowed=false`、`effective_mode=block`、`reason=unknown_capability`。
+- license 缺少 `required_entitlement` 时，即使策略配置 `mode=allow`，最终 `effective_mode` 也会收敛为 `block`。
+- 验证：`TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies`、`TestCapabilityPolicyDeniesMissingEntitlementAndSignsVerifyBundle`。
 
 - [ ] 增加授权诊断支撑 API。
 
@@ -600,8 +618,8 @@ hash 字段缺失
 - [ ] License Guard 后台存在 VisionFlow App、Release、License。
 - [ ] VisionFlow 使用有效 license 激活后，后台出现 Device 和 Activation。
 - [x] `licenseguardctl visionflow bootstrap` 一条命令能生成 VisionFlow 可用本地试用配置。
-- [ ] 默认 VisionFlow capability policy 存在，且未知 capability 不会被默认放行。
-- [ ] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
+- [x] 默认 VisionFlow capability policy 存在，且未知 capability 不会被默认放行。
+- [x] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
 - [ ] 诊断 API 能解释一次 capability deny 的具体原因。
 - [x] verify/heartbeat 能接收并保存 VisionFlow 业务完整性字段。
 - [x] 业务 manifest 签名无效或 hash 不匹配时返回拒绝或风险事件。
