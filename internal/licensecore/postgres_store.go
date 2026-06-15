@@ -167,7 +167,9 @@ func queryApps(ctx context.Context, q sqlQuerier) ([]App, error) {
 func queryReleases(ctx context.Context, q sqlQuerier) ([]AppRelease, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, app_id, platform, version, build_number, channel, status,
-			signer_thumbprint, main_binary_hash, resource_manifest_hash, download_url,
+			signer_thumbprint, main_binary_hash, resource_manifest_hash,
+			business_manifest_sha256, protected_db_schema_hash, protected_db_tables_hash,
+			assets_manifest_sha256, workflow_manifest_sha256, download_url,
 			package_sha256, mandatory, min_supported_version, rollout_percent, release_notes, created_at
 		FROM app_releases
 		ORDER BY created_at, id`)
@@ -190,6 +192,11 @@ func queryReleases(ctx context.Context, q sqlQuerier) ([]AppRelease, error) {
 			&item.SignerThumbprint,
 			&item.MainBinaryHash,
 			&item.ResourceManifestHash,
+			&item.BusinessManifestSHA256,
+			&item.ProtectedDBSchemaHash,
+			&item.ProtectedDBTablesHash,
+			&item.AssetsManifestSHA256,
+			&item.WorkflowManifestSHA256,
 			&item.DownloadURL,
 			&item.PackageSHA256,
 			&item.Mandatory,
@@ -625,9 +632,11 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO app_releases (
 				id, app_id, platform, version, build_number, channel, status,
-				signer_thumbprint, main_binary_hash, resource_manifest_hash, download_url,
+				signer_thumbprint, main_binary_hash, resource_manifest_hash,
+				business_manifest_sha256, protected_db_schema_hash, protected_db_tables_hash,
+				assets_manifest_sha256, workflow_manifest_sha256, download_url,
 				package_sha256, mandatory, min_supported_version, rollout_percent, release_notes, created_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
 			item.ID,
 			item.AppID,
 			item.Platform,
@@ -638,6 +647,11 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 			item.SignerThumbprint,
 			item.MainBinaryHash,
 			item.ResourceManifestHash,
+			item.BusinessManifestSHA256,
+			item.ProtectedDBSchemaHash,
+			item.ProtectedDBTablesHash,
+			item.AssetsManifestSHA256,
+			item.WorkflowManifestSHA256,
 			item.DownloadURL,
 			item.PackageSHA256,
 			item.Mandatory,

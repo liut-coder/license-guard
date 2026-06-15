@@ -231,8 +231,9 @@ business_integrity_errors
 - `business_manifest_signature_valid=false`：拒绝受控能力，记录 high risk。
 - Release 要求的 `business_manifest_sha256` 与客户端上报不一致：拒绝受控能力，记录 `business_manifest_mismatch`。
 - `business_integrity_status=failed|invalid|tampered`：拒绝受控能力，记录 `business_integrity_failed`。
-- `protected_db_tables_hash` 不匹配：Release 增加独立 DB 基线字段后拒绝受控能力，记录 `protected_db_definition_mismatch`。
-- `assets_manifest_sha256` 不匹配：Release 增加独立 assets 基线字段后按策略拒绝或降级，记录 `asset_manifest_mismatch`。
+- `protected_db_schema_hash` / `protected_db_tables_hash` 不匹配：拒绝受控能力，记录 `protected_db_definition_mismatch`。
+- `assets_manifest_sha256` 不匹配：拒绝受控能力，记录 `asset_manifest_mismatch`。
+- `workflow_manifest_sha256` 不匹配：拒绝受控能力，记录 `workflow_manifest_mismatch`。
 - 用户运行数据 hash 不进入拒绝依据，避免把正常配置、记录、evidence 清理误判为破解。
 
 已落地：
@@ -240,8 +241,8 @@ business_integrity_errors
 - `/v1/activate` 和 `/v1/verify` 可接收并保存上述业务完整性字段。
 - `/v1/heartbeat` 支持可选 `integrity` 对象；未传 `integrity` 的旧心跳只更新时间，不触发业务完整性误判。
 - PostgreSQL `integrity_reports` 已增加业务 manifest、受保护 DB、assets、workflow 和业务完整性错误字段。
-- 当前 P0 先复用 Release 的 `resource_manifest_hash` 作为 `business_manifest_sha256` 发布基线，避免一次性扩大 Release schema。
-- 当前已强判 `business_manifest_signature_valid=false`、`business_manifest_mismatch`、`business_integrity_status=failed|invalid|tampered`。
+- Release 已有明确的 `business_manifest_sha256`、`protected_db_schema_hash`、`protected_db_tables_hash`、`assets_manifest_sha256`、`workflow_manifest_sha256` 发布基线字段；旧 `resource_manifest_hash` 仅保留为兼容 fallback。
+- 当前已强判 `business_manifest_signature_valid=false`、`business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch`、`workflow_manifest_mismatch`、`business_integrity_status=failed|invalid|tampered`。
 - 验证：`go test ./internal/licensecore`。
 
 客户端本地 SQLite 加密边界：
@@ -445,6 +446,11 @@ main_binary_hash
 signer_thumbprint
 package_sha256
 business_manifest
+business_manifest_sha256
+protected_db_schema_hash
+protected_db_tables_hash
+assets_manifest_sha256
+workflow_manifest_sha256
 download_url
 release_notes
 mandatory
@@ -452,7 +458,7 @@ min_supported_version
 rollout_percent
 ```
 
-已落地：`cmd/licenseguardctl release publish` 支持从签名后 EXE 和安装包自动计算 `main_binary_hash`、`package_sha256`；支持通过 `-business-manifest` 读取 VisionFlow 已签名业务 manifest，并按 VisionFlow 客户端一致的 signing payload 计算 `business_manifest_sha256`，写入当前 Release 的 `resource_manifest_hash` 基线；显式 `-resource-manifest-hash` 仍然优先。
+已落地：`cmd/licenseguardctl release publish` 支持从签名后 EXE 和安装包自动计算 `main_binary_hash`、`package_sha256`；支持通过 `-business-manifest` 读取 VisionFlow 已签名业务 manifest，并按 VisionFlow 客户端一致的 signing payload 计算 `business_manifest_sha256`；支持显式登记受保护 DB、assets、workflow hash。为兼容旧服务端，未显式传 `-resource-manifest-hash` 时仍会把 business manifest hash 同步写入旧 `resource_manifest_hash`。
 
 - [ ] 支持 VisionFlow 发布后自动登记 Release。
 
@@ -659,8 +665,8 @@ hash 字段缺失
 - [ ] Admin UI 可查看和编辑 VisionFlow capability policy。
 - [ ] Admin UI 可预览某个 license 对某个 capability 的最终结果。
 - [x] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。
-- [x] Release 能登记 VisionFlow `business_manifest_sha256`，当前复用 `resource_manifest_hash` 作为发布基线。
-- [ ] Release schema/发布脚本能分别登记受保护 DB hash、assets hash、workflow hash。
+- [x] Release 能登记 VisionFlow `business_manifest_sha256`。
+- [x] Release schema/发布脚本能分别登记受保护 DB hash、assets hash、workflow hash。
 - [ ] 客户端 verify 返回 `update.available` 时字段完整。
 - [ ] `mandatory=true` 时客户端收到 `update.required=true`。
 - [ ] Admin 登录、activate、verify 的限流或失败延迟生效。
@@ -680,7 +686,7 @@ hash 字段缺失
 - [ ] Windows SDK 可读取并上报 signer thumbprint。
 - [ ] WinVerifyTrust 校验失败能形成风险事件。
 - [ ] debugger / suspicious modules / VM indicators 能进入 integrity report。
-- [ ] VisionFlow `business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch` 能形成风险事件。
+- [x] VisionFlow `business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch`、`workflow_manifest_mismatch` 能形成风险事件。
 - [ ] VisionFlow 上报 DB 加密或密钥读取失败时能形成独立诊断事件，不和 license 过期、吊销混淆。
 - [ ] 高风险设备可触发短 token TTL 或 deny。
 - [ ] SDK 有明确版本 tag 或子模块发布方案。

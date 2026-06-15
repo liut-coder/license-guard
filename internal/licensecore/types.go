@@ -24,23 +24,28 @@ type App struct {
 }
 
 type AppRelease struct {
-	ID                   string    `json:"id"`
-	AppID                string    `json:"app_id"`
-	Platform             string    `json:"platform"`
-	Version              string    `json:"version"`
-	BuildNumber          int       `json:"build_number"`
-	Channel              string    `json:"channel"`
-	Status               string    `json:"status"`
-	SignerThumbprint     string    `json:"signer_thumbprint"`
-	MainBinaryHash       string    `json:"main_binary_hash"`
-	ResourceManifestHash string    `json:"resource_manifest_hash"`
-	DownloadURL          string    `json:"download_url"`
-	PackageSHA256        string    `json:"package_sha256"`
-	Mandatory            bool      `json:"mandatory"`
-	MinSupportedVersion  string    `json:"min_supported_version"`
-	RolloutPercent       int       `json:"rollout_percent"`
-	ReleaseNotes         string    `json:"release_notes"`
-	CreatedAt            time.Time `json:"created_at"`
+	ID                     string    `json:"id"`
+	AppID                  string    `json:"app_id"`
+	Platform               string    `json:"platform"`
+	Version                string    `json:"version"`
+	BuildNumber            int       `json:"build_number"`
+	Channel                string    `json:"channel"`
+	Status                 string    `json:"status"`
+	SignerThumbprint       string    `json:"signer_thumbprint"`
+	MainBinaryHash         string    `json:"main_binary_hash"`
+	ResourceManifestHash   string    `json:"resource_manifest_hash"`
+	BusinessManifestSHA256 string    `json:"business_manifest_sha256"`
+	ProtectedDBSchemaHash  string    `json:"protected_db_schema_hash"`
+	ProtectedDBTablesHash  string    `json:"protected_db_tables_hash"`
+	AssetsManifestSHA256   string    `json:"assets_manifest_sha256"`
+	WorkflowManifestSHA256 string    `json:"workflow_manifest_sha256"`
+	DownloadURL            string    `json:"download_url"`
+	PackageSHA256          string    `json:"package_sha256"`
+	Mandatory              bool      `json:"mandatory"`
+	MinSupportedVersion    string    `json:"min_supported_version"`
+	RolloutPercent         int       `json:"rollout_percent"`
+	ReleaseNotes           string    `json:"release_notes"`
+	CreatedAt              time.Time `json:"created_at"`
 }
 
 type SDKKey struct {

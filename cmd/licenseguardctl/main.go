@@ -59,7 +59,12 @@ func runReleasePublishWithIO(ctx context.Context, args []string, out io.Writer) 
 	packageFile := fs.String("package", "", "path to the installer or distribution package")
 	packageSHA256 := fs.String("package-sha256", "", "package sha256 override")
 	resourceManifestHash := fs.String("resource-manifest-hash", "", "optional resource manifest hash")
-	businessManifest := fs.String("business-manifest", "", "path to signed VisionFlow business manifest; computes resource_manifest_hash when resource-manifest-hash is empty")
+	businessManifest := fs.String("business-manifest", "", "path to signed VisionFlow business manifest; computes business_manifest_sha256 and legacy resource_manifest_hash when resource-manifest-hash is empty")
+	businessManifestSHA256 := fs.String("business-manifest-sha256", "", "VisionFlow business manifest sha256 override")
+	protectedDBSchemaHash := fs.String("protected-db-schema-hash", "", "protected DB schema hash")
+	protectedDBTablesHash := fs.String("protected-db-tables-hash", "", "protected DB tables hash")
+	assetsManifestSHA256 := fs.String("assets-manifest-sha256", "", "assets manifest sha256")
+	workflowManifestSHA256 := fs.String("workflow-manifest-sha256", "", "workflow manifest sha256")
 	downloadURL := fs.String("download-url", "", "release download URL")
 	releaseNotes := fs.String("release-notes", "", "release notes text")
 	releaseNotesFile := fs.String("release-notes-file", "", "release notes file")
@@ -73,25 +78,30 @@ func runReleasePublishWithIO(ctx context.Context, args []string, out io.Writer) 
 	}
 
 	payload, err := buildReleasePayload(releaseInput{
-		appID:                *appID,
-		platform:             *platform,
-		version:              *version,
-		buildNumber:          *buildNumber,
-		channel:              *channel,
-		status:               *status,
-		mainBinary:           *mainBinary,
-		mainBinaryHash:       *mainBinaryHash,
-		signerThumbprint:     *signerThumbprint,
-		packageFile:          *packageFile,
-		packageSHA256:        *packageSHA256,
-		resourceManifestHash: *resourceManifestHash,
-		businessManifest:     *businessManifest,
-		downloadURL:          *downloadURL,
-		releaseNotes:         *releaseNotes,
-		releaseNotesFile:     *releaseNotesFile,
-		mandatory:            *mandatory,
-		minSupportedVersion:  *minSupportedVersion,
-		rolloutPercent:       *rolloutPercent,
+		appID:                  *appID,
+		platform:               *platform,
+		version:                *version,
+		buildNumber:            *buildNumber,
+		channel:                *channel,
+		status:                 *status,
+		mainBinary:             *mainBinary,
+		mainBinaryHash:         *mainBinaryHash,
+		signerThumbprint:       *signerThumbprint,
+		packageFile:            *packageFile,
+		packageSHA256:          *packageSHA256,
+		resourceManifestHash:   *resourceManifestHash,
+		businessManifest:       *businessManifest,
+		businessManifestSHA256: *businessManifestSHA256,
+		protectedDBSchemaHash:  *protectedDBSchemaHash,
+		protectedDBTablesHash:  *protectedDBTablesHash,
+		assetsManifestSHA256:   *assetsManifestSHA256,
+		workflowManifestSHA256: *workflowManifestSHA256,
+		downloadURL:            *downloadURL,
+		releaseNotes:           *releaseNotes,
+		releaseNotesFile:       *releaseNotesFile,
+		mandatory:              *mandatory,
+		minSupportedVersion:    *minSupportedVersion,
+		rolloutPercent:         *rolloutPercent,
 	})
 	if err != nil {
 		return err
@@ -200,43 +210,53 @@ func runVisionFlowBootstrapWithIO(ctx context.Context, args []string, out io.Wri
 }
 
 type releaseInput struct {
-	appID                string
-	platform             string
-	version              string
-	buildNumber          int
-	channel              string
-	status               string
-	mainBinary           string
-	mainBinaryHash       string
-	signerThumbprint     string
-	packageFile          string
-	packageSHA256        string
-	resourceManifestHash string
-	businessManifest     string
-	downloadURL          string
-	releaseNotes         string
-	releaseNotesFile     string
-	mandatory            bool
-	minSupportedVersion  string
-	rolloutPercent       int
+	appID                  string
+	platform               string
+	version                string
+	buildNumber            int
+	channel                string
+	status                 string
+	mainBinary             string
+	mainBinaryHash         string
+	signerThumbprint       string
+	packageFile            string
+	packageSHA256          string
+	resourceManifestHash   string
+	businessManifest       string
+	businessManifestSHA256 string
+	protectedDBSchemaHash  string
+	protectedDBTablesHash  string
+	assetsManifestSHA256   string
+	workflowManifestSHA256 string
+	downloadURL            string
+	releaseNotes           string
+	releaseNotesFile       string
+	mandatory              bool
+	minSupportedVersion    string
+	rolloutPercent         int
 }
 
 type releasePayload struct {
-	AppID                string `json:"app_id"`
-	Platform             string `json:"platform"`
-	Version              string `json:"version"`
-	BuildNumber          int    `json:"build_number"`
-	Channel              string `json:"channel"`
-	Status               string `json:"status"`
-	SignerThumbprint     string `json:"signer_thumbprint"`
-	MainBinaryHash       string `json:"main_binary_hash"`
-	ResourceManifestHash string `json:"resource_manifest_hash,omitempty"`
-	DownloadURL          string `json:"download_url"`
-	PackageSHA256        string `json:"package_sha256"`
-	Mandatory            bool   `json:"mandatory"`
-	MinSupportedVersion  string `json:"min_supported_version,omitempty"`
-	RolloutPercent       int    `json:"rollout_percent"`
-	ReleaseNotes         string `json:"release_notes"`
+	AppID                  string `json:"app_id"`
+	Platform               string `json:"platform"`
+	Version                string `json:"version"`
+	BuildNumber            int    `json:"build_number"`
+	Channel                string `json:"channel"`
+	Status                 string `json:"status"`
+	SignerThumbprint       string `json:"signer_thumbprint"`
+	MainBinaryHash         string `json:"main_binary_hash"`
+	ResourceManifestHash   string `json:"resource_manifest_hash,omitempty"`
+	BusinessManifestSHA256 string `json:"business_manifest_sha256,omitempty"`
+	ProtectedDBSchemaHash  string `json:"protected_db_schema_hash,omitempty"`
+	ProtectedDBTablesHash  string `json:"protected_db_tables_hash,omitempty"`
+	AssetsManifestSHA256   string `json:"assets_manifest_sha256,omitempty"`
+	WorkflowManifestSHA256 string `json:"workflow_manifest_sha256,omitempty"`
+	DownloadURL            string `json:"download_url"`
+	PackageSHA256          string `json:"package_sha256"`
+	Mandatory              bool   `json:"mandatory"`
+	MinSupportedVersion    string `json:"min_supported_version,omitempty"`
+	RolloutPercent         int    `json:"rollout_percent"`
+	ReleaseNotes           string `json:"release_notes"`
 }
 
 type signedVisionFlowBusinessManifest struct {
@@ -328,22 +348,27 @@ type adminApp struct {
 }
 
 type adminRelease struct {
-	ID                   string `json:"id"`
-	AppID                string `json:"app_id"`
-	Platform             string `json:"platform"`
-	Version              string `json:"version"`
-	BuildNumber          int    `json:"build_number"`
-	Channel              string `json:"channel"`
-	Status               string `json:"status"`
-	SignerThumbprint     string `json:"signer_thumbprint"`
-	MainBinaryHash       string `json:"main_binary_hash"`
-	ResourceManifestHash string `json:"resource_manifest_hash"`
-	DownloadURL          string `json:"download_url"`
-	PackageSHA256        string `json:"package_sha256"`
-	Mandatory            bool   `json:"mandatory"`
-	MinSupportedVersion  string `json:"min_supported_version"`
-	RolloutPercent       int    `json:"rollout_percent"`
-	ReleaseNotes         string `json:"release_notes"`
+	ID                     string `json:"id"`
+	AppID                  string `json:"app_id"`
+	Platform               string `json:"platform"`
+	Version                string `json:"version"`
+	BuildNumber            int    `json:"build_number"`
+	Channel                string `json:"channel"`
+	Status                 string `json:"status"`
+	SignerThumbprint       string `json:"signer_thumbprint"`
+	MainBinaryHash         string `json:"main_binary_hash"`
+	ResourceManifestHash   string `json:"resource_manifest_hash"`
+	BusinessManifestSHA256 string `json:"business_manifest_sha256"`
+	ProtectedDBSchemaHash  string `json:"protected_db_schema_hash"`
+	ProtectedDBTablesHash  string `json:"protected_db_tables_hash"`
+	AssetsManifestSHA256   string `json:"assets_manifest_sha256"`
+	WorkflowManifestSHA256 string `json:"workflow_manifest_sha256"`
+	DownloadURL            string `json:"download_url"`
+	PackageSHA256          string `json:"package_sha256"`
+	Mandatory              bool   `json:"mandatory"`
+	MinSupportedVersion    string `json:"min_supported_version"`
+	RolloutPercent         int    `json:"rollout_percent"`
+	ReleaseNotes           string `json:"release_notes"`
 }
 
 type adminLicense struct {
@@ -484,11 +509,15 @@ func buildReleasePayload(input releaseInput) (releasePayload, error) {
 		return releasePayload{}, err
 	}
 	resourceManifestHash := strings.TrimSpace(input.resourceManifestHash)
-	if resourceManifestHash == "" && strings.TrimSpace(input.businessManifest) != "" {
-		resourceManifestHash, err = visionFlowBusinessManifestSHA256(input.businessManifest)
+	businessManifestHash := strings.ToLower(strings.TrimSpace(input.businessManifestSHA256))
+	if businessManifestHash == "" && strings.TrimSpace(input.businessManifest) != "" {
+		businessManifestHash, err = visionFlowBusinessManifestSHA256(input.businessManifest)
 		if err != nil {
 			return releasePayload{}, err
 		}
+	}
+	if resourceManifestHash == "" && businessManifestHash != "" {
+		resourceManifestHash = businessManifestHash
 	}
 	notes, err := releaseNotesValue(input.releaseNotes, input.releaseNotesFile)
 	if err != nil {
@@ -509,21 +538,26 @@ func buildReleasePayload(input releaseInput) (releasePayload, error) {
 	}
 
 	return releasePayload{
-		AppID:                appID,
-		Platform:             fallback(strings.TrimSpace(input.platform), "windows"),
-		Version:              version,
-		BuildNumber:          input.buildNumber,
-		Channel:              fallback(strings.TrimSpace(input.channel), "production"),
-		Status:               fallback(strings.TrimSpace(input.status), "active"),
-		SignerThumbprint:     strings.TrimSpace(input.signerThumbprint),
-		MainBinaryHash:       mainHash,
-		ResourceManifestHash: resourceManifestHash,
-		DownloadURL:          strings.TrimSpace(input.downloadURL),
-		PackageSHA256:        packageHash,
-		Mandatory:            input.mandatory,
-		MinSupportedVersion:  strings.TrimSpace(input.minSupportedVersion),
-		RolloutPercent:       rollout,
-		ReleaseNotes:         notes,
+		AppID:                  appID,
+		Platform:               fallback(strings.TrimSpace(input.platform), "windows"),
+		Version:                version,
+		BuildNumber:            input.buildNumber,
+		Channel:                fallback(strings.TrimSpace(input.channel), "production"),
+		Status:                 fallback(strings.TrimSpace(input.status), "active"),
+		SignerThumbprint:       strings.TrimSpace(input.signerThumbprint),
+		MainBinaryHash:         mainHash,
+		ResourceManifestHash:   resourceManifestHash,
+		BusinessManifestSHA256: businessManifestHash,
+		ProtectedDBSchemaHash:  strings.ToLower(strings.TrimSpace(input.protectedDBSchemaHash)),
+		ProtectedDBTablesHash:  strings.ToLower(strings.TrimSpace(input.protectedDBTablesHash)),
+		AssetsManifestSHA256:   strings.ToLower(strings.TrimSpace(input.assetsManifestSHA256)),
+		WorkflowManifestSHA256: strings.ToLower(strings.TrimSpace(input.workflowManifestSHA256)),
+		DownloadURL:            strings.TrimSpace(input.downloadURL),
+		PackageSHA256:          packageHash,
+		Mandatory:              input.mandatory,
+		MinSupportedVersion:    strings.TrimSpace(input.minSupportedVersion),
+		RolloutPercent:         rollout,
+		ReleaseNotes:           notes,
 	}, nil
 }
 

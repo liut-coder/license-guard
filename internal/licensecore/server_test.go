@@ -435,6 +435,83 @@ func TestBusinessManifestMismatchDeniesVerificationAndPersistsReport(t *testing.
 	}
 }
 
+func TestReleaseResourceManifestFieldsDenyVerification(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	server.mu.Lock()
+	release := server.findReleaseByIDLocked(DemoAppID, "rel_demo_nax_142")
+	if release == nil {
+		server.mu.Unlock()
+		t.Fatal("demo release not found")
+	}
+	release.BusinessManifestSHA256 = "business-v1"
+	release.ProtectedDBSchemaHash = "schema-v1"
+	release.ProtectedDBTablesHash = "tables-v1"
+	release.AssetsManifestSHA256 = "assets-v1"
+	release.WorkflowManifestSHA256 = "workflow-v1"
+	server.mu.Unlock()
+
+	verifyResp := activateDemoLicense(t, server, "resource-mismatch-install", map[string]any{
+		"business_manifest_sha256":          "business-v1",
+		"business_manifest_signature_valid": true,
+		"protected_db_schema_hash":          "schema-v2",
+		"protected_db_tables_hash":          "tables-v2",
+		"assets_manifest_sha256":            "assets-v2",
+		"workflow_manifest_sha256":          "workflow-v2",
+		"business_integrity_status":         "ok",
+	})
+	if verifyResp.Allowed || verifyResp.Code != "INTEGRITY_FAILED" {
+		t.Fatalf("verify response = %#v, want integrity denial", verifyResp)
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	for _, eventType := range []string{"protected_db_definition_mismatch", "asset_manifest_mismatch", "workflow_manifest_mismatch"} {
+		if !hasRiskEvent(server.data.RiskEvents, eventType) {
+			t.Fatalf("%s risk event not found in %#v", eventType, server.data.RiskEvents)
+		}
+	}
+}
+
+func TestAdminReleasePatchPersistsVisionFlowResourceFields(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+	body := []byte(`{
+		"business_manifest_sha256":"business-v1",
+		"protected_db_schema_hash":"schema-v1",
+		"protected_db_tables_hash":"tables-v1",
+		"assets_manifest_sha256":"assets-v1",
+		"workflow_manifest_sha256":"workflow-v1"
+	}`)
+	req := httptest.NewRequest(http.MethodPatch, "/admin/apps/"+DemoAppID+"/releases/rel_demo_nax_142", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("release patch status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Release AppRelease `json:"release"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode release response: %v", err)
+	}
+	if resp.Release.BusinessManifestSHA256 != "business-v1" ||
+		resp.Release.ProtectedDBSchemaHash != "schema-v1" ||
+		resp.Release.ProtectedDBTablesHash != "tables-v1" ||
+		resp.Release.AssetsManifestSHA256 != "assets-v1" ||
+		resp.Release.WorkflowManifestSHA256 != "workflow-v1" {
+		t.Fatalf("release response missing resource fields: %#v", resp.Release)
+	}
+}
+
 func TestBusinessManifestSignatureInvalidDeniesVerification(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {

@@ -501,16 +501,21 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 
 	if len(parts) == 3 && parts[1] == "releases" && r.Method == http.MethodPatch {
 		var req struct {
-			Status               *string `json:"status"`
-			Mandatory            *bool   `json:"mandatory"`
-			RolloutPercent       *int    `json:"rollout_percent"`
-			DownloadURL          *string `json:"download_url"`
-			PackageSHA256        *string `json:"package_sha256"`
-			ReleaseNotes         *string `json:"release_notes"`
-			SignerThumbprint     *string `json:"signer_thumbprint"`
-			MainBinaryHash       *string `json:"main_binary_hash"`
-			MinSupportedVersion  *string `json:"min_supported_version"`
-			ResourceManifestHash *string `json:"resource_manifest_hash"`
+			Status                 *string `json:"status"`
+			Mandatory              *bool   `json:"mandatory"`
+			RolloutPercent         *int    `json:"rollout_percent"`
+			DownloadURL            *string `json:"download_url"`
+			PackageSHA256          *string `json:"package_sha256"`
+			ReleaseNotes           *string `json:"release_notes"`
+			SignerThumbprint       *string `json:"signer_thumbprint"`
+			MainBinaryHash         *string `json:"main_binary_hash"`
+			MinSupportedVersion    *string `json:"min_supported_version"`
+			ResourceManifestHash   *string `json:"resource_manifest_hash"`
+			BusinessManifestSHA256 *string `json:"business_manifest_sha256"`
+			ProtectedDBSchemaHash  *string `json:"protected_db_schema_hash"`
+			ProtectedDBTablesHash  *string `json:"protected_db_tables_hash"`
+			AssetsManifestSHA256   *string `json:"assets_manifest_sha256"`
+			WorkflowManifestSHA256 *string `json:"workflow_manifest_sha256"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -553,6 +558,21 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 		}
 		if req.ResourceManifestHash != nil {
 			release.ResourceManifestHash = *req.ResourceManifestHash
+		}
+		if req.BusinessManifestSHA256 != nil {
+			release.BusinessManifestSHA256 = *req.BusinessManifestSHA256
+		}
+		if req.ProtectedDBSchemaHash != nil {
+			release.ProtectedDBSchemaHash = *req.ProtectedDBSchemaHash
+		}
+		if req.ProtectedDBTablesHash != nil {
+			release.ProtectedDBTablesHash = *req.ProtectedDBTablesHash
+		}
+		if req.AssetsManifestSHA256 != nil {
+			release.AssetsManifestSHA256 = *req.AssetsManifestSHA256
+		}
+		if req.WorkflowManifestSHA256 != nil {
+			release.WorkflowManifestSHA256 = *req.WorkflowManifestSHA256
 		}
 		s.auditLocked(adminID, "release.update", "release", releaseID, r, map[string]any{"app_id": appID})
 		err := s.saveLocked()
@@ -1599,13 +1619,56 @@ func (s *Server) evaluateIntegrityLocked(appID string, deviceID string, licenseI
 				actions = append(actions, "deny")
 				s.addRiskEventLocked(appID, deviceID, licenseID, "signature_mismatch", "high", "deny", "签名证书指纹不匹配", map[string]any{"expected": exactRelease.SignerThumbprint, "actual": input.Integrity.SignerThumbprint})
 			}
-			if exactRelease.ResourceManifestHash != "" && !strings.EqualFold(exactRelease.ResourceManifestHash, input.Integrity.BusinessManifestSHA256) {
+			expectedBusinessManifest := releaseBusinessManifestSHA256(exactRelease)
+			if expectedBusinessManifest != "" && !strings.EqualFold(expectedBusinessManifest, input.Integrity.BusinessManifestSHA256) {
 				score += 90
 				deny = true
 				actions = append(actions, "deny")
 				s.addRiskEventLocked(appID, deviceID, licenseID, "business_manifest_mismatch", "high", "deny", "业务 manifest hash 与发布版本不匹配", map[string]any{
-					"expected":   exactRelease.ResourceManifestHash,
+					"expected":   expectedBusinessManifest,
 					"actual":     input.Integrity.BusinessManifestSHA256,
+					"release_id": exactRelease.ID,
+				})
+			}
+			if exactRelease.ProtectedDBSchemaHash != "" && !strings.EqualFold(exactRelease.ProtectedDBSchemaHash, input.Integrity.ProtectedDBSchemaHash) {
+				score += 85
+				deny = true
+				actions = append(actions, "deny")
+				s.addRiskEventLocked(appID, deviceID, licenseID, "protected_db_definition_mismatch", "high", "deny", "受保护 DB schema hash 与发布版本不匹配", map[string]any{
+					"field":      "protected_db_schema_hash",
+					"expected":   exactRelease.ProtectedDBSchemaHash,
+					"actual":     input.Integrity.ProtectedDBSchemaHash,
+					"release_id": exactRelease.ID,
+				})
+			}
+			if exactRelease.ProtectedDBTablesHash != "" && !strings.EqualFold(exactRelease.ProtectedDBTablesHash, input.Integrity.ProtectedDBTablesHash) {
+				score += 85
+				deny = true
+				actions = append(actions, "deny")
+				s.addRiskEventLocked(appID, deviceID, licenseID, "protected_db_definition_mismatch", "high", "deny", "受保护 DB tables hash 与发布版本不匹配", map[string]any{
+					"field":      "protected_db_tables_hash",
+					"expected":   exactRelease.ProtectedDBTablesHash,
+					"actual":     input.Integrity.ProtectedDBTablesHash,
+					"release_id": exactRelease.ID,
+				})
+			}
+			if exactRelease.AssetsManifestSHA256 != "" && !strings.EqualFold(exactRelease.AssetsManifestSHA256, input.Integrity.AssetsManifestSHA256) {
+				score += 85
+				deny = true
+				actions = append(actions, "deny")
+				s.addRiskEventLocked(appID, deviceID, licenseID, "asset_manifest_mismatch", "high", "deny", "assets manifest hash 与发布版本不匹配", map[string]any{
+					"expected":   exactRelease.AssetsManifestSHA256,
+					"actual":     input.Integrity.AssetsManifestSHA256,
+					"release_id": exactRelease.ID,
+				})
+			}
+			if exactRelease.WorkflowManifestSHA256 != "" && !strings.EqualFold(exactRelease.WorkflowManifestSHA256, input.Integrity.WorkflowManifestSHA256) {
+				score += 85
+				deny = true
+				actions = append(actions, "deny")
+				s.addRiskEventLocked(appID, deviceID, licenseID, "workflow_manifest_mismatch", "high", "deny", "workflow manifest hash 与发布版本不匹配", map[string]any{
+					"expected":   exactRelease.WorkflowManifestSHA256,
+					"actual":     input.Integrity.WorkflowManifestSHA256,
 					"release_id": exactRelease.ID,
 				})
 			}
@@ -2892,18 +2955,33 @@ func releaseEvidence(release *AppRelease) map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"version":              release.Version,
-		"main_binary_hash":     release.MainBinaryHash,
-		"signer_thumbprint":    release.SignerThumbprint,
-		"resource_manifest":    release.ResourceManifestHash,
-		"release_id":           release.ID,
-		"min_supported":        release.MinSupportedVersion,
-		"rollout_percent":      release.RolloutPercent,
-		"mandatory":            release.Mandatory,
-		"package_sha256":       release.PackageSHA256,
-		"download_url":         release.DownloadURL,
-		"resource_manifest_id": release.ResourceManifestHash,
+		"version":                  release.Version,
+		"main_binary_hash":         release.MainBinaryHash,
+		"signer_thumbprint":        release.SignerThumbprint,
+		"resource_manifest":        release.ResourceManifestHash,
+		"business_manifest_sha256": release.BusinessManifestSHA256,
+		"protected_db_schema_hash": release.ProtectedDBSchemaHash,
+		"protected_db_tables_hash": release.ProtectedDBTablesHash,
+		"assets_manifest_sha256":   release.AssetsManifestSHA256,
+		"workflow_manifest_sha256": release.WorkflowManifestSHA256,
+		"release_id":               release.ID,
+		"min_supported":            release.MinSupportedVersion,
+		"rollout_percent":          release.RolloutPercent,
+		"mandatory":                release.Mandatory,
+		"package_sha256":           release.PackageSHA256,
+		"download_url":             release.DownloadURL,
+		"resource_manifest_id":     release.ResourceManifestHash,
 	}
+}
+
+func releaseBusinessManifestSHA256(release *AppRelease) string {
+	if release == nil {
+		return ""
+	}
+	if strings.TrimSpace(release.BusinessManifestSHA256) != "" {
+		return strings.TrimSpace(release.BusinessManifestSHA256)
+	}
+	return strings.TrimSpace(release.ResourceManifestHash)
 }
 
 func sdkKeyEvidence(key *SDKKey) map[string]any {

@@ -119,25 +119,60 @@ func TestBuildReleasePayloadComputesVisionFlowBusinessManifestHash(t *testing.T)
 	if payload.ResourceManifestHash != want {
 		t.Fatalf("resource manifest hash = %q, want %q", payload.ResourceManifestHash, want)
 	}
+	if payload.BusinessManifestSHA256 != want {
+		t.Fatalf("business manifest hash = %q, want %q", payload.BusinessManifestSHA256, want)
+	}
 }
 
 func TestBuildReleasePayloadResourceManifestHashOverridesBusinessManifest(t *testing.T) {
 	payload, err := buildReleasePayload(releaseInput{
-		appID:                "app_visionflow_windows_prod",
-		version:              "0.2.0",
-		buildNumber:          42,
-		mainBinaryHash:       "binaryhash",
-		packageSHA256:        "packagehash",
-		signerThumbprint:     "ABCDEF",
-		downloadURL:          "https://download.example/visionflow.exe",
-		resourceManifestHash: "explicit",
-		businessManifest:     filepath.Join(t.TempDir(), "missing.json"),
+		appID:                  "app_visionflow_windows_prod",
+		version:                "0.2.0",
+		buildNumber:            42,
+		mainBinaryHash:         "binaryhash",
+		packageSHA256:          "packagehash",
+		signerThumbprint:       "ABCDEF",
+		downloadURL:            "https://download.example/visionflow.exe",
+		resourceManifestHash:   "explicit",
+		businessManifestSHA256: "business",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if payload.ResourceManifestHash != "explicit" {
 		t.Fatalf("resource manifest hash = %q, want explicit", payload.ResourceManifestHash)
+	}
+	if payload.BusinessManifestSHA256 != "business" {
+		t.Fatalf("business manifest hash = %q, want business", payload.BusinessManifestSHA256)
+	}
+}
+
+func TestBuildReleasePayloadAcceptsVisionFlowResourceHashes(t *testing.T) {
+	payload, err := buildReleasePayload(releaseInput{
+		appID:                  "app_visionflow_windows_prod",
+		version:                "0.2.0",
+		buildNumber:            42,
+		mainBinaryHash:         "binaryhash",
+		packageSHA256:          "packagehash",
+		signerThumbprint:       "ABCDEF",
+		downloadURL:            "https://download.example/visionflow.exe",
+		businessManifestSHA256: "BUSINESS",
+		protectedDBSchemaHash:  "SCHEMA",
+		protectedDBTablesHash:  "TABLES",
+		assetsManifestSHA256:   "ASSETS",
+		workflowManifestSHA256: "WORKFLOW",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.BusinessManifestSHA256 != "business" || payload.ResourceManifestHash != "business" {
+		t.Fatalf("business/resource hashes = %q/%q, want business compatibility", payload.BusinessManifestSHA256, payload.ResourceManifestHash)
+	}
+	if payload.ProtectedDBSchemaHash != "schema" ||
+		payload.ProtectedDBTablesHash != "tables" ||
+		payload.AssetsManifestSHA256 != "assets" ||
+		payload.WorkflowManifestSHA256 != "workflow" {
+		t.Fatalf("resource hashes not normalized: %#v", payload)
 	}
 }
 
