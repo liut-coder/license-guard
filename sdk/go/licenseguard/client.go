@@ -17,6 +17,7 @@ type Options struct {
 	AppVersion         string
 	BinaryHashOverride string
 	SignerThumbprint   string
+	IntegrityHook      func(context.Context, IntegrityReport) (IntegrityReport, error)
 	HTTPClient         *http.Client
 }
 
@@ -54,12 +55,20 @@ type DeviceInfo struct {
 }
 
 type IntegrityReport struct {
-	AppVersion        string   `json:"app_version"`
-	MainBinaryHash    string   `json:"main_binary_hash"`
-	SignerThumbprint  string   `json:"signer_thumbprint"`
-	DebuggerDetected  bool     `json:"debugger_detected"`
-	SuspiciousModules []string `json:"suspicious_modules"`
-	VMIndicators      []string `json:"vm_indicators"`
+	AppVersion                     string   `json:"app_version"`
+	MainBinaryHash                 string   `json:"main_binary_hash"`
+	SignerThumbprint               string   `json:"signer_thumbprint"`
+	BusinessManifestSHA256         string   `json:"business_manifest_sha256,omitempty"`
+	BusinessManifestSignatureValid *bool    `json:"business_manifest_signature_valid,omitempty"`
+	ProtectedDBSchemaHash          string   `json:"protected_db_schema_hash,omitempty"`
+	ProtectedDBTablesHash          string   `json:"protected_db_tables_hash,omitempty"`
+	AssetsManifestSHA256           string   `json:"assets_manifest_sha256,omitempty"`
+	WorkflowManifestSHA256         string   `json:"workflow_manifest_sha256,omitempty"`
+	BusinessIntegrityStatus        string   `json:"business_integrity_status,omitempty"`
+	BusinessIntegrityErrors        []string `json:"business_integrity_errors,omitempty"`
+	DebuggerDetected               bool     `json:"debugger_detected"`
+	SuspiciousModules              []string `json:"suspicious_modules"`
+	VMIndicators                   []string `json:"vm_indicators"`
 }
 
 type ActivateRequest struct {
@@ -84,11 +93,12 @@ type VerifyRequest struct {
 }
 
 type HeartbeatRequest struct {
-	AppID        string         `json:"app_id"`
-	LicenseToken string         `json:"license_token"`
-	InstallID    string         `json:"install_id"`
-	AppVersion   string         `json:"app_version"`
-	Runtime      map[string]any `json:"runtime,omitempty"`
+	AppID        string           `json:"app_id"`
+	LicenseToken string           `json:"license_token"`
+	InstallID    string           `json:"install_id"`
+	AppVersion   string           `json:"app_version"`
+	Integrity    *IntegrityReport `json:"integrity,omitempty"`
+	Runtime      map[string]any   `json:"runtime,omitempty"`
 }
 
 type DeactivateRequest struct {
@@ -239,7 +249,7 @@ func (c *Client) Activate(ctx context.Context, licenseKey string) (*VerifyResult
 	if err != nil {
 		return nil, err
 	}
-	integrity, err := CollectIntegrity(c.options.AppVersion, c.options.BinaryHashOverride, c.options.SignerThumbprint)
+	integrity, err := c.collectIntegrity(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +293,7 @@ func (c *Client) VerifyWithToken(ctx context.Context, token string) (*VerifyResu
 	if err != nil {
 		return nil, err
 	}
-	integrity, err := CollectIntegrity(c.options.AppVersion, c.options.BinaryHashOverride, c.options.SignerThumbprint)
+	integrity, err := c.collectIntegrity(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -315,8 +325,7 @@ func (c *Client) Heartbeat(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var resp map[string]any
-	return c.postJSON(ctx, "/heartbeat", HeartbeatRequest{
+	request := HeartbeatRequest{
 		AppID:        c.options.AppID,
 		LicenseToken: cached.LicenseToken,
 		InstallID:    installID,
@@ -324,7 +333,16 @@ func (c *Client) Heartbeat(ctx context.Context) error {
 		Runtime: map[string]any{
 			"heartbeat_at": time.Now().UTC(),
 		},
-	}, &resp)
+	}
+	if c.options.IntegrityHook != nil {
+		integrity, err := c.collectIntegrity(ctx)
+		if err != nil {
+			return err
+		}
+		request.Integrity = &integrity
+	}
+	var resp map[string]any
+	return c.postJSON(ctx, "/heartbeat", request, &resp)
 }
 
 func (c *Client) Deactivate(ctx context.Context) error {
@@ -354,6 +372,17 @@ func HasEntitlement(entitlements []string, required string) bool {
 		}
 	}
 	return false
+}
+
+func (c *Client) collectIntegrity(ctx context.Context) (IntegrityReport, error) {
+	integrity, err := CollectIntegrity(c.options.AppVersion, c.options.BinaryHashOverride, c.options.SignerThumbprint)
+	if err != nil {
+		return IntegrityReport{}, err
+	}
+	if c.options.IntegrityHook == nil {
+		return integrity, nil
+	}
+	return c.options.IntegrityHook(ctx, integrity)
 }
 
 func (c *Client) postJSON(ctx context.Context, path string, in any, out any) error {
