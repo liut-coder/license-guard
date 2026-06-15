@@ -333,7 +333,7 @@ Entitlements:
 查看策略来源：默认 / 套餐 / 客户 / license / 部署收紧
 ```
 
-- [ ] Admin UI 增加 License 签发向导。
+- [x] Admin UI 增加 License 签发向导。
 
 向导能力：
 
@@ -344,6 +344,8 @@ Entitlements:
 预览该 license 在 VisionFlow 中可用/不可用能力
 生成 license key
 ```
+
+已落地：Admin UI 授权页提供签发向导，可选择当前 VisionFlow App、填写套餐名、客户标识、设备数、到期日期和 entitlement 集合；签发结果展示 license key、套餐、设备数、到期时间和 entitlements，授权列表同步展示套餐和权益。
 
 - [x] Admin UI 增加策略预览。
 

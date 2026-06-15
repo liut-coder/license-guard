@@ -1572,11 +1572,15 @@
               <div id="licensesTable"></div>
             </div>
             <form class="card" id="createLicenseForm">
-              <h2>签发授权</h2>
+              <h2>签发授权向导</h2>
               <div class="field"><label>App ID</label><input name="app_id" value="app_nax_desktop_prod" /></div>
+              <div class="field"><label>套餐名</label><input name="plan_name" value="VisionFlow Pro" /></div>
               <div class="field"><label>客户标识</label><input name="owner_ref" value="customer-demo" /></div>
               <div class="field"><label>设备数</label><input name="max_devices" value="3" /></div>
               <div class="field"><label>到期日期</label><input name="expires_at" value="2027-06-07" /></div>
+              <div class="field"><label>Entitlements</label><textarea name="entitlements">visionflow.automation
+visionflow.batch
+visionflow.export</textarea></div>
               <button class="button primary form-submit" type="submit"><i class="icon" data-lucide="badge-check"></i><span>签发</span></button>
               <div id="newLicenseKey"></div>
             </form>
@@ -1814,12 +1818,19 @@
           method: "POST",
           body: JSON.stringify({
             app_id: form.get("app_id"),
+            plan_name: form.get("plan_name"),
             owner_ref: form.get("owner_ref"),
             max_devices: Number(form.get("max_devices")),
             expires_at: form.get("expires_at"),
+            entitlements: splitTextareaList(form.get("entitlements")),
           }),
         });
-        document.getElementById("newLicenseKey").innerHTML = `<div class="callout"><div class="strong">新授权码，只显示一次</div>${data.license_key}</div>`;
+        document.getElementById("newLicenseKey").innerHTML = `<div class="callout">
+          <div class="strong">新授权码，只显示一次</div>
+          <div class="mono">${escapeHTML(data.license_key)}</div>
+          <div class="muted-line">套餐: ${escapeHTML(data.license?.plan_name || "")} · 设备数: ${escapeHTML(data.license?.max_devices || "")} · 到期: ${escapeHTML(formatDate(data.license?.expires_at))}</div>
+          <div class="muted-line">Entitlements: ${escapeHTML((data.license?.entitlements || []).join(", "))}</div>
+        </div>`;
         await loadAll();
       });
 
@@ -2261,16 +2272,29 @@
       function renderLicenses(items) {
         renderTable(
           "licensesTable",
-          ["授权", "应用", "设备数", "到期", "状态", "操作"],
+          ["授权", "应用", "套餐/权益", "设备数", "到期", "状态", "操作"],
           items.map((item) => [
             strong(item.license_key_prefix + "..."),
             item.app_id,
+            licensePlanAndEntitlements(item),
             item.max_devices,
             formatDate(item.expires_at),
             badge(item.status, item.status === "active" ? "success" : item.status === "revoked" ? "error" : "warning"),
             licenseActions(item),
           ]),
         );
+      }
+
+      function splitTextareaList(value) {
+        return String(value || "")
+          .split(/[\n,]/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+      }
+
+      function licensePlanAndEntitlements(item) {
+        const entitlements = (item.entitlements || []).join(", ");
+        return `${strong(item.plan_name || "未命名套餐")}<div class="muted-line">${escapeHTML(entitlements || "无 entitlement")}</div>`;
       }
 
       function licenseActions(item) {
