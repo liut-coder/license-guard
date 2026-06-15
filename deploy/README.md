@@ -5,7 +5,7 @@ These templates are production-oriented starting points. Replace placeholders, w
 ## Docker Compose
 
 1. Copy `deploy/.env.example` to `deploy/.env`.
-2. Replace `POSTGRES_PASSWORD`, `DATABASE_URL`, `LICENSEGUARD_HTTP_PORT`, `LICENSEGUARD_PUBLIC_BASE_URL`, and `LG_CORS_ALLOWED_ORIGINS`.
+2. Replace `POSTGRES_PASSWORD`, `DATABASE_URL`, `LICENSEGUARD_HTTP_PORT`, `LICENSEGUARD_PUBLIC_BASE_URL`, and `LG_CORS_ALLOWED_ORIGINS`. Keep `LG_PRODUCTION=true` for production deployments.
 3. Start PostgreSQL, run migrations, then start the API:
 
 ```bash
@@ -17,6 +17,8 @@ Older hosts with the standalone Compose binary can run the same template with `d
 The Compose template runs `licenseguard-migrate` once before the API and stores signing keys in the `licenseguard_keys` volume. Do not delete or rotate that volume unless you intentionally invalidate issued tokens.
 
 `LG_CORS_ALLOWED_ORIGINS` should be a comma-separated list of concrete HTTPS origins that host the Admin UI or operator console, for example `https://licenseguard.example.com`. Use `*` only for local development.
+
+`LG_PRODUCTION=true` makes `licenseguard-server` fail fast unless it runs with PostgreSQL, an explicit persistent `-key-dir`, and concrete CORS origins.
 
 ## HTTPS Reverse Proxy
 
@@ -30,7 +32,7 @@ For a bare-metal or VM deployment:
 2. Install `licenseguard-server` and `licenseguard-migrate` under `/usr/local/bin`.
 3. Copy `web/admin` and `migrations` to `/opt/licenseguard`.
 4. Create the `licenseguard` user and `/var/lib/licenseguard/keys`.
-5. Copy `deploy/systemd/licenseguard.env.example` to `/etc/licenseguard/licenseguard.env` and replace the database URL plus `LG_CORS_ALLOWED_ORIGINS`.
+5. Copy `deploy/systemd/licenseguard.env.example` to `/etc/licenseguard/licenseguard.env` and replace the database URL plus `LG_CORS_ALLOWED_ORIGINS`. Keep `LG_PRODUCTION=true` unless this is a local development instance.
 6. Install both unit files, then run:
 
 ```bash

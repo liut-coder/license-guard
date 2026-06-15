@@ -23,7 +23,12 @@ func main() {
 	autoMigrate := flag.Bool("auto-migrate", false, "apply PostgreSQL schema migrations before starting")
 	migrationsDir := flag.String("migrations-dir", "./migrations", "directory containing PostgreSQL migration SQL files")
 	corsAllowedOrigins := flag.String("cors-allowed-origins", envOrDefault("LG_CORS_ALLOWED_ORIGINS", "*"), "comma-separated CORS allowed origins; use concrete HTTPS origins in production")
+	production := flag.Bool("production", envBool("LG_PRODUCTION", false), "enforce production safety checks")
 	flag.Parse()
+
+	if err := validateProductionConfig(*production, *storeMode, *keyDir, *corsAllowedOrigins); err != nil {
+		log.Fatalf("invalid production config: %s", err)
+	}
 
 	resolvedKeyDir := *keyDir
 	if resolvedKeyDir == "" {
@@ -85,12 +90,53 @@ func buildStore(mode string, dataDir string, databaseURL string, autoMigrate boo
 	}
 }
 
+func validateProductionConfig(production bool, storeMode string, keyDir string, corsAllowedOrigins string) error {
+	if !production {
+		return nil
+	}
+	if !isPostgresStore(storeMode) {
+		return fmt.Errorf("production mode requires -store=postgres, got %q", storeMode)
+	}
+	if strings.TrimSpace(keyDir) == "" {
+		return fmt.Errorf("production mode requires explicit -key-dir with persistent storage")
+	}
+	if corsAllowsWildcard(corsAllowedOrigins) {
+		return fmt.Errorf("production mode requires concrete -cors-allowed-origins, got empty or wildcard")
+	}
+	return nil
+}
+
+func isPostgresStore(mode string) bool {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	return mode == "postgres" || mode == "postgresql"
+}
+
+func corsAllowsWildcard(origins string) bool {
+	for _, part := range strings.Split(origins, ",") {
+		if strings.TrimSpace(part) == "*" {
+			return true
+		}
+	}
+	return strings.TrimSpace(origins) == ""
+}
+
 func envOrDefault(key string, fallback string) string {
 	value := os.Getenv(key)
 	if value == "" {
 		return fallback
 	}
 	return value
+}
+
+func envBool(key string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 var postgresURLPattern = regexp.MustCompile(`postgres(?:ql)?://[^\s'"<>]+`)

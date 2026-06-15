@@ -493,8 +493,8 @@ Public Key 指纹
 
 ### P1：生产安全基线
 
-- [ ] 生产默认使用 PostgreSQL，不使用 JSON store。
-- [ ] 多实例部署共享同一份 `signing-key.json` 或持久化 `-key-dir`。
+- [x] 生产默认使用 PostgreSQL，不使用 JSON store。
+- [x] 生产模式要求显式持久化 `-key-dir`；多实例仍需部署层共享同一份 `signing-key.json` 或 key volume。
 - [ ] 明确备份和恢复流程，覆盖数据库和签名密钥。
 - [ ] 生产必须使用 HTTPS。
 - [x] 收紧生产 CORS，避免 Admin UI/API 长期使用 `Access-Control-Allow-Origin: *`。
@@ -502,14 +502,19 @@ Public Key 指纹
 已落地：
 
 - `licenseguard-server` 支持 `-cors-allowed-origins` 和 `LG_CORS_ALLOWED_ORIGINS`。
+- `licenseguard-server` 支持 `-production` 和 `LG_PRODUCTION=true`，生产模式会拒绝 JSON store、缺失 `-key-dir`、空 CORS 或通配 CORS。
 - 默认保留 `*` 兼容本地开发；生产部署模板默认使用具体 HTTPS origin。
 - API 只对匹配 Origin 返回 `Access-Control-Allow-Origin`，非匹配 Origin 不返回放行头。
-- Docker Compose 和 systemd 模板均已接入 `LG_CORS_ALLOWED_ORIGINS`。
+- Docker Compose 和 systemd 模板均已接入 `LG_CORS_ALLOWED_ORIGINS` 和 `LG_PRODUCTION=true`。
 
 验证：
 
 - `TestDefaultCORSAllowsWildcard`
 - `TestConfiguredCORSAllowsOnlyMatchingOrigin`
+- `TestValidateProductionConfigRequiresPostgresStore`
+- `TestValidateProductionConfigRequiresExplicitKeyDir`
+- `TestValidateProductionConfigRejectsWildcardCORS`
+- `TestValidateProductionConfigAcceptsProductionSettings`
 
 - [ ] 处理 demo admin：生产首次启动强制改密或生产模式禁用 demo seed。
 - [x] Admin 登录、challenge、activate、verify 增加限流或失败延迟。
@@ -770,6 +775,7 @@ hash 字段缺失
 - [x] Admin 登录、activate、verify 的限流或失败延迟生效。
 - [x] 过期 challenge 会被清理。
 - [x] 生产 CORS/HTTPS 配置有文档和模板。
+- [x] 生产模式会 fail fast 拒绝 JSON store、缺失 `-key-dir`、空 CORS 或通配 CORS。
 
 ### P2 验收
 

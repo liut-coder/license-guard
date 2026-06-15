@@ -1,6 +1,6 @@
 # Production Readiness Checklist
 
-更新时间：2026-06-08
+更新时间：2026-06-16
 
 本文用于把 License Guard MVP 从“功能闭环”推进到“上线前可验证”。自动检查负责证明代码、迁移、烟测和关键安全不变量仍然成立；人工检查负责确认环境、运维和租户安全配置已经到位。
 
@@ -17,7 +17,7 @@ bash scripts/production-check.sh
 - `go test ./...`
 - `go build -buildvcs=false ./cmd/licenseguard-server ./cmd/licenseguard-migrate`
 - `bash scripts/smoke.sh`
-- `migrations/001_initial_schema.sql` 到 `migrations/007_capability_policies.sql` 文件顺序和 `schema_migrations` 记录
+- `migrations/001_initial_schema.sql` 到 `migrations/008_release_resource_fields.sql` 文件顺序和 `schema_migrations` 记录
 - Admin UI 内联 JavaScript 可解析
 - README 和部署文档包含 PostgreSQL、迁移、`-key-dir`、备份、HTTPS、demo seed 限制和多副本迁移约束
 - SDK Key API 使用 `SDKKeyView`，管理台不引用 `secret_hash`，单测和烟测覆盖 `secret_hash` 不泄露
@@ -26,7 +26,8 @@ bash scripts/production-check.sh
 
 ## 2. PostgreSQL 与迁移
 
-- 生产运行使用 `-store postgres` 和 `DATABASE_URL`。
+- 生产运行使用 `-production` / `LG_PRODUCTION=true`、`-store postgres` 和 `DATABASE_URL`。
+- 生产模式会拒绝 JSON store，避免误用本地文件存储上线。
 - `DATABASE_URL` 使用 TLS，例如 `sslmode=require`，并通过部署平台 secret 注入。
 - 多副本生产环境先由发布流水线运行 `licenseguard-migrate`，再启动或滚动 API 实例。
 - `-auto-migrate` 只用于小型单节点或临时环境，不作为多副本生产默认方案。
@@ -35,7 +36,7 @@ bash scripts/production-check.sh
 
 ## 3. 签名密钥
 
-- `-key-dir` 必须挂载到持久化磁盘或受控 secret volume。
+- 生产模式必须显式传入 `-key-dir`，并挂载到持久化磁盘或受控 secret volume。
 - `signing-key.json` 需要备份、访问控制和恢复流程。
 - 多实例部署必须共享同一份签名私钥；否则客户端 token 验签会不稳定。
 - 公钥可以发布给 SDK；私钥不得进入客户端、日志、截图或工单。
@@ -43,7 +44,7 @@ bash scripts/production-check.sh
 ## 4. 网络与后台安全
 
 - API 和 Admin UI 对外只通过 HTTPS 暴露。
-- `LG_CORS_ALLOWED_ORIGINS` / `-cors-allowed-origins` 必须配置为具体 HTTPS Origin；生产不得使用 `*`。
+- `LG_CORS_ALLOWED_ORIGINS` / `-cors-allowed-origins` 必须配置为具体 HTTPS Origin；生产模式会拒绝空值或 `*`。
 - 后台入口配置 IP 白名单、MFA 或等效访问控制。
 - Admin 登录、challenge、activate、verify 的失败限流必须开启并经过演练，连续失败应返回 `RATE_LIMITED`。
 - 首次生产启动后立即替换 demo 管理员凭据，确认默认密码不可登录。
