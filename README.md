@@ -173,6 +173,10 @@ Production-oriented templates live under `deploy/`:
 
 See `deploy/README.md` for the operational flow and backup caveats.
 
+## VisionFlow Authorization Productization
+
+The current VisionFlow-facing roadmap is tracked in `docs/2026-06-15-visionflow-support-enhancement-plan.md`. It covers the planned one-command bootstrap flow, capability policy model, Admin UI policy editor, signed policy delivery, release automation, and acceptance checks for VisionFlow integration.
+
 ## Release Publish CLI
 
 `licenseguardctl` can register a release without manually copying artifact hashes:

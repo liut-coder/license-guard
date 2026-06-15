@@ -1,4 +1,4 @@
-# License Guard 支撑 VisionFlow 接入增强实施与验收清单
+# License Guard 支撑 VisionFlow 授权产品化实施与验收清单
 
 > 文档状态：当前版本草稿
 > 当前版本基线日期：2026-06-15
@@ -7,28 +7,164 @@
 
 ## 0. 当前版本基线
 
-- 当前阶段：License Guard 已具备服务端、Admin UI、PostgreSQL 迁移、Windows Go SDK、demo 和 smoke，但还需要为 VisionFlow 接入补齐 SDK 稳定性、部署自动化、发布注册和生产安全增强。
-- 当前目标：降低 VisionFlow 接入和部署成本，让授权、版本发布、更新提示、设备绑定、完整性校验和后台运维形成可验收闭环。
+- 当前阶段：License Guard 已具备服务端、Admin UI、PostgreSQL 迁移、Windows Go SDK、demo、smoke、部署模板、集成包和 Release 发布 CLI；VisionFlow 授权链路已能本地联调，但试用配置和授权拦截体验仍偏工程化。
+- 当前目标：将 License Guard 从“授权 API + SDK”升级为 VisionFlow 的授权产品化控制中心，覆盖一键试用、能力策略、可视化配置、Release 自动化、授权诊断和生产安全基线。
 - 分支策略：用户确认 `license-guard` 使用 `main`。
 - 接入约束：不追求完全零配置；客户端至少需要可信的 Endpoint、App ID、Public Key 和 license 激活入口。
 - 已确认不做：不把 SDK secret、服务端私钥、admin token 或生产 license key 放进客户端集成包。
-- 待确认：License Guard 正式部署目标环境、安装包托管地址、代码签名证书、是否需要多租户隔离。
+- 已确认新方向：能力定义和强制边界由 VisionFlow 内置；拦截策略、套餐、客户差异和可视化配置由 License Guard 管理；客户端配置只能收紧体验，不能绕过 license entitlement。
+- 待确认：License Guard 正式部署目标环境、安装包托管地址、代码签名证书、套餐/客户模型是否进入首期可视化。
 
-## 1. 增强目标
+## 1. 最终形态与配置归属
+
+License Guard 最终承担 VisionFlow 授权策略中心角色：
+
+```text
+License Guard Admin UI
+  - App / Release / License
+  - Entitlement / Plan / Customer
+  - Capability Policy
+  - VisionFlow bootstrap / integration bundle
+        ↓ signed policy + license token
+VisionFlow License Provider
+  - 拉取 license 状态
+  - 拉取 signed policy
+  - 本地缓存和诊断
+        ↓
+VisionFlow Capability Gate
+  - 前端体验拦截
+  - 后端强制拦截
+  - 任务启动/恢复/批量/导出统一校验
+```
+
+| 配置 | 归属 | 是否可视化 | 约束 |
+|---|---|---:|---|
+| capability 名称和安全等级 | VisionFlow 代码内置，License Guard 同步展示 | 只读 | 不能由客户删除或改成不受控 |
+| capability -> entitlement 映射 | VisionFlow 内置默认值，License Guard 保存 App 级策略 | 是 | License Guard 不能授予 license 未包含的 entitlement |
+| 拦截体验策略 | License Guard | 是 | 支持 block、hide、readonly、degrade、watermark、warn |
+| 套餐/客户/license 差异 | License Guard | 是 | 按默认策略、套餐、客户、license 层级合并 |
+| Release 元数据 | CI / `licenseguardctl` 写入 License Guard | 是 | 不应人工逐项填写 hash 和包摘要 |
+| 私有化部署覆盖 | 部署配置 | 可选 | 只能收紧或改提示，不能放宽授权 |
+
+策略合并原则：
+
+```text
+VisionFlow 内置安全基线
+  ∩ License entitlements
+  ∩ License Guard signed policy
+  ∩ 私有化收紧策略
+  = 最终可执行能力
+```
+
+## 2. 增强目标
 
 | 目标 | 判断方式 | 优先级 |
 |---|---|---|
 | SDK Windows 缓存稳定 | `go test ./...` 在 Windows 通过 | P0 |
 | VisionFlow 可本地依赖 SDK | VisionFlow 能用 `replace` 编译接入 | P0 |
-| VisionFlow 专用 App 初始化 | 后台存在 App、Release、License、Public Key | P0 |
+| VisionFlow 专用一键试用 | 一条 bootstrap 命令创建 App、Release、License 并输出 VisionFlow 可用配置 | P0 |
+| Capability Policy 模型 | 服务端能保存并下发 VisionFlow 能力策略 | P0 |
+| 策略安全边界 | 策略不能放宽 license 未包含的 entitlement | P0 |
+| 授权诊断支撑 | API 能解释 license、device、release、policy 和最近拒绝原因 | P0 |
 | Release 自动登记 | 发布后不用人工复制 hash | P1 |
 | 接入包生成 | 后台可下载 VisionFlow 接入配置包 | P1 |
+| 能力策略可视化 | Admin UI 可配置 capability 拦截方式和提示文案 | P1 |
+| 套餐/客户策略 | 不同 plan/customer/license 可覆盖默认策略 | P1 |
 | 部署模板 | 服务端部署从文档手工配置收敛为模板 | P1 |
 | 生产安全基线 | HTTPS、PostgreSQL、密钥持久化、默认凭据处理 | P1 |
 | 防共享和低成本破解 | 设备绑定、短 token、hash 校验、吊销生效 | P1 |
 | 高阶完整性/风控 | WinVerifyTrust、调试器/模块/VM 信号 | P3 |
 
-## 2. 实施清单
+## 3. 实施清单
+
+### P0：VisionFlow 授权产品化入口
+
+- [ ] 增加 VisionFlow 一键 bootstrap 命令：
+
+```text
+licenseguardctl visionflow bootstrap
+```
+
+默认行为：
+
+```text
+创建或复用 App: app_visionflow_windows_prod
+创建 dev Release: windows / 0.1.0 / dev hash / dev signer
+创建测试 License: 至少包含 visionflow.automation
+读取 /v1/public-key
+输出 VisionFlow 可直接使用的 env 和 license key
+```
+
+建议输出：
+
+```text
+LICENSE_GUARD_ENDPOINT=http://127.0.0.1:8090/v1
+LICENSE_GUARD_APP_ID=app_visionflow_windows_prod
+LICENSE_GUARD_PUBLIC_KEY=...
+LICENSE_GUARD_APP_VERSION=0.1.0
+LICENSE_GUARD_BINARY_HASH=dev-visionflow-main-binary-sha256
+LICENSE_GUARD_SIGNER_THUMBPRINT=dev-visionflow-signer-thumbprint
+VISIONFLOW_LICENSE_KEY=...
+```
+
+- [ ] 增加 VisionFlow 默认产品模板。
+
+默认 entitlement：
+
+```text
+visionflow.automation
+visionflow.batch
+visionflow.export
+visionflow.plugin
+visionflow.update
+```
+
+默认 capability policy：
+
+| Capability | Entitlement | 默认模式 | 说明 |
+|---|---|---|---|
+| `automation.run` | `visionflow.automation` | block | 自动化任务启动 |
+| `automation.resume` | `visionflow.automation` | block | 任务恢复 |
+| `automation.batch` | `visionflow.batch` | block | 批量任务 |
+| `script.execute` | `visionflow.automation` | block | 脚本/动作执行 |
+| `export.video` | `visionflow.export` | watermark | 导出能力 |
+| `plugin.install` | `visionflow.plugin` | block | 插件安装 |
+| `update.skipMandatory` | `visionflow.update` | block | 跳过强制更新 |
+
+- [ ] 增加 Capability Policy 服务端模型和 API。
+
+首期字段：
+
+```text
+app_id
+capability
+required_entitlement
+mode
+message
+limits_json
+updated_at
+```
+
+安全要求：
+
+- 未知 capability 默认拒绝或标记为需要 VisionFlow 确认。
+- `mode=allow` 不能绕过 `required_entitlement`。
+- 下发给客户端的 policy 必须有签名或绑定在签名 license 响应中。
+- policy 允许降级、隐藏、只读和提示，但不能授予 license 没有的权益。
+
+- [ ] 增加授权诊断支撑 API。
+
+诊断至少能解释：
+
+```text
+license 状态
+license entitlements
+device 状态
+release 状态
+policy 命中结果
+最近一次 verify / heartbeat
+最近一次 capability deny 原因
+```
 
 ### P0：VisionFlow 接入前置
 
@@ -75,6 +211,54 @@ Entitlements:
 
 - [ ] 创建首个 VisionFlow License，并验证设备数限制。
 - [x] 确认 `/v1/public-key` 返回值可用于客户端本地验签。
+
+### P1：能力策略可视化
+
+- [ ] Admin UI 增加 Capability Policy 页面。
+
+页面能力：
+
+```text
+查看 VisionFlow capability 列表
+查看 required entitlement
+选择拦截模式 block / hide / readonly / degrade / watermark / warn
+编辑用户提示文案
+编辑 limits_json，如 maxConcurrent、maxExports、watermarkText
+查看策略来源：默认 / 套餐 / 客户 / license / 部署收紧
+```
+
+- [ ] Admin UI 增加 License 签发向导。
+
+向导能力：
+
+```text
+选择 VisionFlow App
+选择套餐或 entitlement 集合
+设置过期时间和设备数
+预览该 license 在 VisionFlow 中可用/不可用能力
+生成 license key
+```
+
+- [ ] Admin UI 增加策略预览。
+
+输入：
+
+```text
+license
+device_id
+app_version
+capability
+```
+
+输出：
+
+```text
+allowed / denied / degraded
+deny reason
+命中的 entitlement
+命中的 policy 层级
+用户可见文案
+```
 
 ### P1：部署与发布自动化
 
@@ -251,6 +435,52 @@ download_url
 - [ ] 增加 update 行为 smoke：普通更新、强制更新、版本封禁、最低版本。
 - [ ] 提供接入包导入说明，面向 VisionFlow 客户部署。
 
+### P2：Release 与 CI 自动化补强
+
+- [ ] 扩展 `licenseguardctl release publish --from-artifact`。
+
+自动生成或读取：
+
+```text
+version
+build_number
+main_binary_hash
+signer_thumbprint
+package_sha256
+download_url
+release_notes
+mandatory
+min_supported_version
+rollout_percent
+```
+
+- [ ] 提供 VisionFlow CI 示例。
+
+发布顺序：
+
+```text
+build VisionFlow
+代码签名
+计算签名后 EXE SHA-256
+打安装包
+计算安装包 SHA-256
+上传安装包
+注册 License Guard Release
+```
+
+- [ ] Admin UI 对 Release 风险字段加确认。
+
+需要确认：
+
+```text
+mandatory=true
+min_supported_version 提高
+rollout_percent 降低
+blocked release
+download_url 为空
+hash 字段缺失
+```
+
 ### P3：防破解与风控增强
 
 - [ ] SDK 固定 public key 策略文档化：生产客户端不应每次启动动态信任 `/v1/public-key`。
@@ -263,7 +493,7 @@ download_url
 - [ ] 增加异常系统时间风险事件。
 - [ ] 将 SDK 拆成稳定版本或子模块，发布 tag，避免客户端长期依赖服务端仓库主分支。
 
-## 3. 防破解能力边界
+## 4. 防破解能力边界
 
 ### 当前方案能有效防
 
@@ -286,7 +516,7 @@ download_url
 
 定位：适合商业授权、防共享、防低成本破解、防内部滥用；对专业逆向是提高成本，不是绝对防护。
 
-## 4. 验收清单
+## 5. 验收清单
 
 ### P0 验收
 
@@ -297,6 +527,10 @@ download_url
 - [ ] VisionFlow 能通过本地 `replace` import SDK 并编译。
 - [ ] License Guard 后台存在 VisionFlow App、Release、License。
 - [ ] VisionFlow 使用有效 license 激活后，后台出现 Device 和 Activation。
+- [ ] `licenseguardctl visionflow bootstrap` 一条命令能生成 VisionFlow 可用本地试用配置。
+- [ ] 默认 VisionFlow capability policy 存在，且未知 capability 不会被默认放行。
+- [ ] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
+- [ ] 诊断 API 能解释一次 capability deny 的具体原因。
 
 ### P1 验收
 
@@ -304,6 +538,8 @@ download_url
 - [ ] `-key-dir` 持久化，重启服务后 public key 不变化。
 - [ ] Admin UI 可下载 VisionFlow 接入包。
 - [ ] 接入包不包含 SDK secret、私钥、admin token、生产 license key。
+- [ ] Admin UI 可查看和编辑 VisionFlow capability policy。
+- [ ] Admin UI 可预览某个 license 对某个 capability 的最终结果。
 - [ ] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。
 - [ ] 客户端 verify 返回 `update.available` 时字段完整。
 - [ ] `mandatory=true` 时客户端收到 `update.required=true`。
@@ -327,18 +563,22 @@ download_url
 - [ ] 高风险设备可触发短 token TTL 或 deny。
 - [ ] SDK 有明确版本 tag 或子模块发布方案。
 
-## 5. 非目标
+## 6. 非目标
 
 - 不提供破解不可行的承诺。
 - 不把服务端私钥或 SDK secret 下发到客户端。
 - 不默认把生产 license key 打进公共安装包。
 - 不把 JSON store 作为生产推荐部署。
 - 不在本阶段实现 Redis、对象存储或复杂多租户计费。
+- 不允许通过前端配置、部署配置或策略覆盖放宽 license entitlement。
+- 不把 VisionFlow 的安全基线交给客户可编辑配置维护。
 
-## 6. 待确认问题
+## 7. 待确认问题
 
 - License Guard 正式部署是单机、Docker Compose、还是云平台托管。
 - VisionFlow 安装包下载地址由谁维护。
 - 是否已有代码签名证书。
 - 是否需要给不同客户生成私有接入包。
 - 是否需要多环境：dev、staging、production。
+- 套餐/客户模型首期是否只做 VisionFlow 单 App，还是直接抽象为通用 License Guard 能力。
+- Capability policy 签名是否复用 license token Ed25519 key，还是独立 policy signing key。
