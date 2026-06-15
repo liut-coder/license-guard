@@ -179,12 +179,13 @@ updated_at
 - 新增 `capability_policies` 存储模型和 PostgreSQL 迁移。
 - 提供 `GET /admin/apps/{app_id}/capability-policies` 查看策略。
 - 提供 `PUT/PATCH /admin/apps/{app_id}/capability-policies` 批量 upsert 策略。
+- Admin UI SDK 工作台已提供“能力策略”页签，可查看/编辑当前 App policy、补齐 VisionFlow 默认策略并保存。
 - `/v1/activate` 和 `/v1/verify` 返回签名的 `capability_policy` 决策包，客户端可用 `/v1/public-key` 返回的 Ed25519 公钥验签。
 - 提供 `POST /v1/capability/check`，按 license token 和 capability 返回服务端决策。
 - 未登记 capability 默认 `allowed=false`、`effective_mode=block`、`reason=unknown_capability`。
 - license 缺少 `required_entitlement` 时，即使策略配置 `mode=allow`，最终 `effective_mode` 也会收敛为 `block`。
 - Go SDK 已解析 `capability_policy`，支持验签、防篡改、缓存 signed policy，并在本地 `CachedAuthorization` 中仅暴露验签通过的策略包。
-- 验证：`TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies`、`TestCapabilityPolicyDeniesMissingEntitlementAndSignsVerifyBundle`。
+- 验证：`TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies`、`TestCapabilityPolicyDeniesMissingEntitlementAndSignsVerifyBundle`、Admin UI JavaScript parse。
 
 - [x] 增加授权诊断支撑 API。
 
@@ -766,9 +767,9 @@ hash 字段缺失
 
 - [ ] 使用部署模板可启动 PostgreSQL、迁移和 License Guard API。
 - [ ] `-key-dir` 持久化，重启服务后 public key 不变化。
-- [ ] Admin UI 可下载 VisionFlow 接入包。
+- [x] Admin UI 可下载 VisionFlow 接入包。
 - [ ] 接入包不包含 SDK secret、私钥、admin token、生产 license key。
-- [ ] Admin UI 可查看和编辑 VisionFlow capability policy。
+- [x] Admin UI 可查看和编辑 VisionFlow capability policy。
 - [ ] Admin UI 可预览某个 license 对某个 capability 的最终结果。
 - [x] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。
 - [x] Release 能登记 VisionFlow `business_manifest_sha256`。

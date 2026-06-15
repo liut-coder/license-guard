@@ -1607,11 +1607,13 @@
             <div class="sdk-tabs" role="tablist" aria-label="SDK 接入工作台">
               <button class="active" data-sdk-tab="overview" type="button">接入总览</button>
               <button data-sdk-tab="guide" type="button">App 改造指南</button>
+              <button data-sdk-tab="policy" type="button">能力策略</button>
               <button data-sdk-tab="generate" type="button">自动生成</button>
               <button data-sdk-tab="verify" type="button">联调验证</button>
             </div>
             <div id="sdkPanelOverview" class="sdk-tab-panel active"></div>
             <div id="sdkPanelGuide" class="sdk-tab-panel"></div>
+            <div id="sdkPanelPolicy" class="sdk-tab-panel"></div>
             <div id="sdkPanelGenerate" class="sdk-tab-panel"></div>
             <div id="sdkPanelVerify" class="sdk-tab-panel"></div>
             <div id="copyState" class="copy-state"></div>
@@ -1668,6 +1670,7 @@
       const sdkTabs = {
         overview: "sdkPanelOverview",
         guide: "sdkPanelGuide",
+        policy: "sdkPanelPolicy",
         generate: "sdkPanelGenerate",
         verify: "sdkPanelVerify",
       };
@@ -1976,6 +1979,23 @@
         }
         if (action === "download-bundle") {
           await downloadIntegrationBundle(id);
+        }
+        if (action === "seed-policy-defaults") {
+          const data = await api(`/admin/apps/${encodeURIComponent(id)}/capability-policies/visionflow-defaults`, { method: "POST", body: "{}" });
+          state.sdkContext.capabilityPolicies = data.items || [];
+          renderSDKPolicy(state.sdkContext);
+          refreshIcons();
+          document.getElementById("copyState").textContent = `默认策略已补齐 ${data.added || 0} 条`;
+        }
+        if (action === "add-policy-row") {
+          addCapabilityPolicyRow();
+          refreshIcons();
+        }
+        if (action === "remove-policy-row") {
+          actionButton.closest("[data-policy-row]")?.remove();
+        }
+        if (action === "save-policies") {
+          await saveCapabilityPolicies(id);
         }
       });
 
@@ -2313,6 +2333,10 @@
           "rotate-sdk-key": "rotate-cw",
           "sdk-manual-step": "check-square",
           "download-bundle": "download",
+          "seed-policy-defaults": "list-plus",
+          "add-policy-row": "plus",
+          "save-policies": "save",
+          "remove-policy-row": "trash-2",
         };
         const icon = icons[action] || "circle";
         const appAttr = appID ? ` data-app-id="${escapeHTML(appID)}"` : "";
@@ -2332,6 +2356,13 @@
         } catch {
           onboarding = deriveOnboarding(appDetail, appID);
         }
+        let capabilityPolicies = [];
+        try {
+          const policyResp = await api(`/admin/apps/${encodeURIComponent(appID)}/capability-policies`);
+          capabilityPolicies = policyResp.items || [];
+        } catch {
+          capabilityPolicies = [];
+        }
         const publicKey = await loadPublicKey();
         const params = {
           endpoint,
@@ -2344,11 +2375,12 @@
           install_id_path: "/tmp/license-guard-demo/install_id",
           token_cache_path: "/tmp/license-guard-demo/token.json",
         };
-        state.sdkContext = { app, appID, sdkKey, keys: appDetail.sdk_keys || [], releases, onboarding, params };
+        state.sdkContext = { app, appID, sdkKey, keys: appDetail.sdk_keys || [], releases, onboarding, params, capabilityPolicies };
         setSDKTab(state.sdkTab);
         renderSDKKeyPanel(appID, sdkKey, appDetail.sdk_keys || []);
         renderSDKOverview(state.sdkContext);
         renderSDKGuide(state.sdkContext);
+        renderSDKPolicy(state.sdkContext);
         renderSDKGenerate(state.sdkContext);
         renderSDKVerify(state.sdkContext);
       }
@@ -2455,6 +2487,102 @@
             </div>`,
           )
           .join("")}</div>`;
+      }
+
+      function renderSDKPolicy(ctx) {
+        if (!ctx) return;
+        document.getElementById("sdkPanelPolicy").innerHTML = `
+          <div class="sdk-board">
+            <div>
+              <div class="action-group">
+                ${actionButton("补齐默认策略", "seed-policy-defaults", ctx.appID)}
+                ${actionButton("新增策略", "add-policy-row", ctx.appID)}
+                ${actionButton("保存策略", "save-policies", ctx.appID)}
+              </div>
+              <div class="table-wrap" style="margin-top: 14px">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Capability</th>
+                      <th>Entitlement</th>
+                      <th>模式</th>
+                      <th>提示</th>
+                      <th>Limits JSON</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="policyEditorRows">${(ctx.capabilityPolicies || []).map(policyRowHTML).join("")}</tbody>
+                </table>
+              </div>
+            </div>
+            <div class="sdk-evidence">
+              <h3>策略边界</h3>
+              <p><span class="strong">当前 App:</span> ${escapeHTML(ctx.appID)}</p>
+              <p><span class="strong">策略数:</span> ${escapeHTML((ctx.capabilityPolicies || []).length)}</p>
+              <p><span class="strong">规则:</span> License entitlement 仍是硬边界，策略只能收紧或改变体验。</p>
+              <p><span class="strong">默认:</span> 未知 capability 按 block 处理。</p>
+            </div>
+          </div>`;
+      }
+
+      function policyRowHTML(policy = {}) {
+        const limits = policy.limits_json && Object.keys(policy.limits_json).length ? JSON.stringify(policy.limits_json, null, 2) : "{}";
+        return `<tr data-policy-row>
+          <td><input data-policy-field="capability" value="${escapeHTML(policy.capability || "")}" /></td>
+          <td><input data-policy-field="required_entitlement" value="${escapeHTML(policy.required_entitlement || "")}" /></td>
+          <td><select data-policy-field="mode">${policyModeOptions(policy.mode || "block")}</select></td>
+          <td><input data-policy-field="message" value="${escapeHTML(policy.message || "")}" /></td>
+          <td><textarea data-policy-field="limits_json">${escapeHTML(limits)}</textarea></td>
+          <td>${actionButton("删除", "remove-policy-row", policy.capability || "new")}</td>
+        </tr>`;
+      }
+
+      function policyModeOptions(selected) {
+        return ["block", "allow", "hide", "readonly", "degrade", "watermark", "warn"]
+          .map((mode) => `<option value="${mode}"${mode === selected ? " selected" : ""}>${mode}</option>`)
+          .join("");
+      }
+
+      function addCapabilityPolicyRow() {
+        const rows = document.getElementById("policyEditorRows");
+        if (!rows) return;
+        rows.insertAdjacentHTML("beforeend", policyRowHTML({ mode: "block", limits_json: {} }));
+      }
+
+      function collectCapabilityPolicyRows() {
+        return [...document.querySelectorAll("[data-policy-row]")]
+          .map((row) => {
+            const field = (name) => row.querySelector(`[data-policy-field="${name}"]`);
+            const capability = field("capability")?.value.trim() || "";
+            const requiredEntitlement = field("required_entitlement")?.value.trim() || "";
+            const mode = field("mode")?.value || "block";
+            const message = field("message")?.value.trim() || "";
+            const limitsText = field("limits_json")?.value.trim() || "{}";
+            return {
+              capability,
+              required_entitlement: requiredEntitlement,
+              mode,
+              message,
+              limits_json: JSON.parse(limitsText),
+            };
+          })
+          .filter((item) => item.capability || item.required_entitlement || item.message);
+      }
+
+      async function saveCapabilityPolicies(appID) {
+        try {
+          const items = collectCapabilityPolicyRows();
+          const data = await api(`/admin/apps/${encodeURIComponent(appID)}/capability-policies`, {
+            method: "PUT",
+            body: JSON.stringify({ items }),
+          });
+          state.sdkContext.capabilityPolicies = data.items || [];
+          renderSDKPolicy(state.sdkContext);
+          refreshIcons();
+          document.getElementById("copyState").textContent = "能力策略已保存";
+        } catch (error) {
+          document.getElementById("copyState").textContent = `能力策略保存失败: ${error.message}`;
+        }
       }
 
       function renderSDKGenerate(ctx) {
