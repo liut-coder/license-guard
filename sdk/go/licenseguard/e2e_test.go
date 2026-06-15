@@ -53,6 +53,7 @@ func TestSDKBusinessIntegrityEndToEndWithServer(t *testing.T) {
 			base.AssetsManifestSHA256 = assetsHash
 			base.WorkflowManifestSHA256 = "workflow-v1"
 			base.BusinessIntegrityStatus = "ok"
+			base.DBEncryptionStatus = "ok"
 			return base, nil
 		},
 	})
@@ -93,7 +94,7 @@ func TestSDKBusinessIntegrityEndToEndWithServer(t *testing.T) {
 		t.Fatalf("heartbeat error = %#v, want INTEGRITY_FAILED APIError", err)
 	}
 	latest := getSDKTestLatestIntegrityReport(t, httpServer.URL, adminToken, licensecore.DemoAppID)
-	if latest.AssetsManifestSHA256 != "assets-v2" || latest.BusinessIntegrityStatus != "ok" {
+	if latest.AssetsManifestSHA256 != "assets-v2" || latest.BusinessIntegrityStatus != "ok" || latest.DBEncryptionStatus != "ok" {
 		t.Fatalf("latest integrity report = %#v, want mismatched asset hash persisted", latest)
 	}
 }
@@ -101,6 +102,7 @@ func TestSDKBusinessIntegrityEndToEndWithServer(t *testing.T) {
 type sdkTestIntegrityReport struct {
 	AssetsManifestSHA256    string `json:"assets_manifest_sha256"`
 	BusinessIntegrityStatus string `json:"business_integrity_status"`
+	DBEncryptionStatus      string `json:"db_encryption_status"`
 }
 
 func fetchSDKTestPublicKey(t *testing.T, endpoint string) string {

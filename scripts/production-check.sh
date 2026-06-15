@@ -90,6 +90,7 @@ expected=(
   "006_integrity_business_fields.sql"
   "007_capability_policies.sql"
   "008_release_resource_fields.sql"
+  "009_db_encryption_diagnostics.sql"
 )
 mapfile -t actual < <(find migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | sort)
 if [[ "${#actual[@]}" -ne "${#expected[@]}" ]]; then

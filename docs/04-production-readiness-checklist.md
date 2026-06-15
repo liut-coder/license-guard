@@ -17,7 +17,7 @@ bash scripts/production-check.sh
 - `go test ./...`
 - `go build -buildvcs=false ./cmd/licenseguard-server ./cmd/licenseguard-migrate`
 - `bash scripts/smoke.sh`
-- `migrations/001_initial_schema.sql` 到 `migrations/008_release_resource_fields.sql` 文件顺序和 `schema_migrations` 记录
+- `migrations/001_initial_schema.sql` 到 `migrations/009_db_encryption_diagnostics.sql` 文件顺序和 `schema_migrations` 记录
 - Admin UI 内联 JavaScript 可解析
 - README 和部署文档包含 PostgreSQL、迁移、`-key-dir`、备份、HTTPS、demo seed 限制和多副本迁移约束
 - SDK Key API 使用 `SDKKeyView`，管理台不引用 `secret_hash`，单测和烟测覆盖 `secret_hash` 不泄露

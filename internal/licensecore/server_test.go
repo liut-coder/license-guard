@@ -1106,6 +1106,71 @@ func TestRiskSignalsPersistIntegrityReportWithoutSingleSignalDeny(t *testing.T) 
 	}
 }
 
+func TestDBEncryptionFailureCreatesDiagnosticRiskEvent(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+
+	verifyResp := activateDemoLicense(t, server, "db-encryption-failure-install", map[string]any{
+		"db_encryption_status": "key_unavailable",
+		"db_encryption_errors": []string{"dpapi key not found"},
+	})
+	if verifyResp.Allowed || verifyResp.Code != "INTEGRITY_FAILED" {
+		t.Fatalf("verify response = %#v, want DB encryption integrity denial", verifyResp)
+	}
+
+	server.mu.Lock()
+	if len(server.data.IntegrityReports) == 0 {
+		server.mu.Unlock()
+		t.Fatal("integrity report was not persisted")
+	}
+	report := server.data.IntegrityReports[len(server.data.IntegrityReports)-1]
+	if report.DBEncryptionStatus != "key_unavailable" ||
+		len(report.DBEncryptionErrors) != 1 ||
+		report.DBEncryptionErrors[0] != "dpapi key not found" {
+		server.mu.Unlock()
+		t.Fatalf("DB encryption report fields = %#v", report)
+	}
+	if len(server.data.RiskEvents) == 0 {
+		server.mu.Unlock()
+		t.Fatal("DB encryption failure did not create a risk event")
+	}
+	latestRisk := server.data.RiskEvents[len(server.data.RiskEvents)-1]
+	server.mu.Unlock()
+
+	if latestRisk.EventType != "db_encryption_failed" ||
+		latestRisk.Severity != "high" ||
+		latestRisk.Action != "deny" {
+		t.Fatalf("latest risk event = %#v, want db_encryption_failed denial", latestRisk)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/apps/"+DemoAppID+"/diagnostics?license_id=lic_demo_windows&platform=windows&app_version=1.4.2", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("diagnostics status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var diag AuthorizationDiagnosticResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &diag); err != nil {
+		t.Fatalf("decode diagnostics response: %v", err)
+	}
+	if diag.LatestRiskEvent == nil || diag.LatestRiskEvent.EventType != "db_encryption_failed" {
+		t.Fatalf("latest diagnostic risk = %#v, want db_encryption_failed", diag.LatestRiskEvent)
+	}
+	if diag.LatestIntegrityReport == nil || diag.LatestIntegrityReport.DBEncryptionStatus != "key_unavailable" {
+		t.Fatalf("latest diagnostic integrity report = %#v", diag.LatestIntegrityReport)
+	}
+	if !hasFinding(diag.Findings, "integrity", "db_encryption_failed") {
+		t.Fatalf("diagnostic findings missing DB encryption failure: %#v", diag.Findings)
+	}
+	if hasFinding(diag.Findings, "license", "license_expired") || hasFinding(diag.Findings, "license", "license_not_active") {
+		t.Fatalf("DB encryption failure was mixed with license status findings: %#v", diag.Findings)
+	}
+}
+
 func TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {

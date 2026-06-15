@@ -26,6 +26,7 @@ func TestCollectIntegrityAppliesHook(t *testing.T) {
 			base.AssetsManifestSHA256 = "assets"
 			base.WorkflowManifestSHA256 = "workflow"
 			base.BusinessIntegrityStatus = "ok"
+			base.DBEncryptionStatus = "ok"
 			return base, nil
 		},
 	})
@@ -44,7 +45,8 @@ func TestCollectIntegrityAppliesHook(t *testing.T) {
 		integrity.ProtectedDBTablesHash != "tables" ||
 		integrity.AssetsManifestSHA256 != "assets" ||
 		integrity.WorkflowManifestSHA256 != "workflow" ||
-		integrity.BusinessIntegrityStatus != "ok" {
+		integrity.BusinessIntegrityStatus != "ok" ||
+		integrity.DBEncryptionStatus != "ok" {
 		t.Fatalf("integrity = %#v, want business fields", integrity)
 	}
 }
@@ -65,6 +67,8 @@ func TestHeartbeatRequestCanCarryBusinessIntegrity(t *testing.T) {
 			AssetsManifestSHA256:           "assets",
 			WorkflowManifestSHA256:         "workflow",
 			BusinessIntegrityStatus:        "ok",
+			DBEncryptionStatus:             "key_unavailable",
+			DBEncryptionErrors:             []string{"dpapi key not found"},
 		},
 	}
 
@@ -80,6 +84,8 @@ func TestHeartbeatRequestCanCarryBusinessIntegrity(t *testing.T) {
 		`"assets_manifest_sha256":"assets"`,
 		`"workflow_manifest_sha256":"workflow"`,
 		`"business_integrity_status":"ok"`,
+		`"db_encryption_status":"key_unavailable"`,
+		`"db_encryption_errors":["dpapi key not found"]`,
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("heartbeat request JSON %s missing %s", data, want)

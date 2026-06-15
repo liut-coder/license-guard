@@ -224,6 +224,8 @@ assets_manifest_sha256
 workflow_manifest_sha256
 business_integrity_status
 business_integrity_errors
+db_encryption_status
+db_encryption_errors
 ```
 
 拒绝规则：
@@ -234,6 +236,7 @@ business_integrity_errors
 - `protected_db_schema_hash` / `protected_db_tables_hash` 不匹配：拒绝受控能力，记录 `protected_db_definition_mismatch`。
 - `assets_manifest_sha256` 不匹配：拒绝受控能力，记录 `asset_manifest_mismatch`。
 - `workflow_manifest_sha256` 不匹配：拒绝受控能力，记录 `workflow_manifest_mismatch`。
+- `db_encryption_status=failed|key_unavailable|migration_failed|plaintext_fallback|disabled` 等异常：拒绝受控能力，记录独立 `db_encryption_failed`，不和 license 过期、吊销混淆。
 - 用户运行数据 hash 不进入拒绝依据，避免把正常配置、记录、evidence 清理误判为破解。
 
 已落地：
@@ -242,17 +245,17 @@ business_integrity_errors
 - `/v1/heartbeat` 支持可选 `integrity` 对象；未传 `integrity` 的旧心跳只更新时间，不触发业务完整性误判。
 - Go SDK 支持 `IntegrityHook`，可在 `activate`、`verify` 和启用 hook 的 `heartbeat` 中附加 VisionFlow 业务完整性摘要。
 - Go SDK 在 heartbeat 收到 `ok=false` / `INTEGRITY_FAILED` 时返回 `APIError`，避免客户端把完整性拒绝误当成心跳成功。
-- PostgreSQL `integrity_reports` 已增加业务 manifest、受保护 DB、assets、workflow 和业务完整性错误字段。
+- PostgreSQL `integrity_reports` 已增加业务 manifest、受保护 DB、assets、workflow、业务完整性错误和 DB 加密诊断字段。
 - Release 已有明确的 `business_manifest_sha256`、`protected_db_schema_hash`、`protected_db_tables_hash`、`assets_manifest_sha256`、`workflow_manifest_sha256` 发布基线字段；旧 `resource_manifest_hash` 仅保留为兼容 fallback。
-- 当前已强判 `business_manifest_signature_valid=false`、`business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch`、`workflow_manifest_mismatch`、`business_integrity_status=failed|invalid|tampered`。
-- 验证：`go test ./internal/licensecore`、`TestSDKBusinessIntegrityEndToEndWithServer`。
+- 当前已强判 `business_manifest_signature_valid=false`、`business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch`、`workflow_manifest_mismatch`、`business_integrity_status=failed|invalid|tampered`、`db_encryption_status` 异常。
+- 验证：`go test ./internal/licensecore`、`TestDBEncryptionFailureCreatesDiagnosticRiskEvent`、`TestSDKBusinessIntegrityEndToEndWithServer`。
 
 客户端本地 SQLite 加密边界：
 
 - SQLCipher 密钥由 VisionFlow 在本机生成并保存到 Windows DPAPI 或 Credential Manager。
 - License Guard 不保存 SQLCipher 密钥、不参与 DB 解密、不提供本地 DB 恢复。
 - License Guard 只接收加密 DB 打开后的完整性摘要，例如 protected table hash 和 business manifest hash。
-- DB 加密失败、密钥丢失、密钥不可读属于 VisionFlow 本地诊断/恢复问题，不应被 License Guard 误判为 license 有效。
+- DB 加密失败、密钥丢失、密钥不可读属于 VisionFlow 本地诊断/恢复问题；License Guard 会记录 `db_encryption_failed` 风险事件并返回 `INTEGRITY_FAILED`，不把它误判为 license 过期、吊销或暂停。
 
 ### P0：VisionFlow 接入前置
 
@@ -792,7 +795,7 @@ hash 字段缺失
 - [ ] WinVerifyTrust 校验失败能形成风险事件。
 - [x] debugger / suspicious modules / VM indicators 能进入 integrity report。
 - [x] VisionFlow `business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch`、`workflow_manifest_mismatch` 能形成风险事件。
-- [ ] VisionFlow 上报 DB 加密或密钥读取失败时能形成独立诊断事件，不和 license 过期、吊销混淆。
+- [x] VisionFlow 上报 DB 加密或密钥读取失败时能形成独立诊断事件，不和 license 过期、吊销混淆。
 - [x] 高风险设备可触发短 token TTL 或 deny。
 - [ ] SDK 有明确版本 tag 或子模块发布方案。
 
@@ -820,4 +823,4 @@ hash 字段缺失
 - Capability policy 签名是否复用 license token Ed25519 key，还是独立 policy signing key。
 - VisionFlow 业务 manifest hash 是否作为 Release 必填字段，还是首期作为可选完整性增强字段。
 - `assets_manifest_sha256` 不匹配时首期是直接拒绝，还是按 capability 策略只拒绝依赖该资源的任务。
-- VisionFlow DB 加密失败是否需要 License Guard risk event，还是仅在 VisionFlow 本地诊断页展示。
+- 已确认：VisionFlow DB 加密失败需要 License Guard risk event，事件类型为 `db_encryption_failed`；VisionFlow 本地诊断页负责恢复引导。

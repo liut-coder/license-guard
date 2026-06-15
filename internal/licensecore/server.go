@@ -1785,6 +1785,15 @@ func (s *Server) evaluateIntegrityLocked(appID string, deviceID string, licenseI
 			"errors": input.Integrity.BusinessIntegrityErrors,
 		})
 	}
+	if dbEncryptionStatusFailed(input.Integrity.DBEncryptionStatus) {
+		score += 85
+		deny = true
+		actions = append(actions, "deny")
+		s.addRiskEventLocked(appID, deviceID, licenseID, "db_encryption_failed", "high", "deny", "本地 DB 加密或密钥读取失败", map[string]any{
+			"status": input.Integrity.DBEncryptionStatus,
+			"errors": input.Integrity.DBEncryptionErrors,
+		})
+	}
 	if input.Integrity.DebuggerDetected {
 		score += 40
 		actions = append(actions, "shorten_token_ttl")
@@ -1837,6 +1846,8 @@ func newIntegrityReport(appID string, deviceID string, platform string, integrit
 		WorkflowManifestSHA256:         integrity.WorkflowManifestSHA256,
 		BusinessIntegrityStatus:        integrity.BusinessIntegrityStatus,
 		BusinessIntegrityErrors:        integrity.BusinessIntegrityErrors,
+		DBEncryptionStatus:             integrity.DBEncryptionStatus,
+		DBEncryptionErrors:             integrity.DBEncryptionErrors,
 		DebuggerDetected:               integrity.DebuggerDetected,
 		SuspiciousModules:              integrity.SuspiciousModules,
 		VMIndicators:                   integrity.VMIndicators,
@@ -1860,6 +1871,8 @@ func integrityRequestHasEvidence(integrity IntegrityRequest) bool {
 		integrity.WorkflowManifestSHA256 != "" ||
 		integrity.BusinessIntegrityStatus != "" ||
 		len(integrity.BusinessIntegrityErrors) > 0 ||
+		integrity.DBEncryptionStatus != "" ||
+		len(integrity.DBEncryptionErrors) > 0 ||
 		integrity.DebuggerDetected ||
 		len(integrity.SuspiciousModules) > 0 ||
 		len(integrity.VMIndicators) > 0
@@ -2015,6 +2028,9 @@ func (s *Server) authorizationDiagnosticLocked(input authorizationDiagnosticInpu
 		response.Findings = append(response.Findings, diagnosticFinding("risk", "ok", "no_capability_deny", "未找到当前 capability 的拒绝风险记录", nil))
 	}
 	if latestReport != nil {
+		if dbEncryptionStatusFailed(latestReport.DBEncryptionStatus) {
+			response.Findings = append(response.Findings, diagnosticFinding("integrity", "blocked", "db_encryption_failed", "本地 DB 加密或密钥读取失败", integrityEvidence(latestReport)))
+		}
 		response.Findings = append(response.Findings, diagnosticFinding("integrity", "ok", "latest_integrity_report_found", "找到最近一次完整性上报", integrityEvidence(latestReport)))
 	} else {
 		response.Findings = append(response.Findings, diagnosticFinding("integrity", "missing", "integrity_report_not_found", "未找到完整性上报", nil))
@@ -3163,10 +3179,21 @@ func integrityEvidence(report *IntegrityReport) map[string]any {
 		"workflow_manifest_sha256":          report.WorkflowManifestSHA256,
 		"business_integrity_status":         report.BusinessIntegrityStatus,
 		"business_integrity_errors":         report.BusinessIntegrityErrors,
+		"db_encryption_status":              report.DBEncryptionStatus,
+		"db_encryption_errors":              report.DBEncryptionErrors,
 		"debugger_detected":                 report.DebuggerDetected,
 		"suspicious_modules":                report.SuspiciousModules,
 		"vm_indicators":                     report.VMIndicators,
 		"created_at":                        report.CreatedAt,
+	}
+}
+
+func dbEncryptionStatusFailed(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "failed", "error", "key_missing", "key_unavailable", "key_unreadable", "migration_failed", "plaintext", "plaintext_fallback", "disabled":
+		return true
+	default:
+		return false
 	}
 }
 

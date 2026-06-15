@@ -131,6 +131,8 @@ CREATE TABLE IF NOT EXISTS integrity_reports (
   workflow_manifest_sha256 text NOT NULL DEFAULT '',
   business_integrity_status text NOT NULL DEFAULT '',
   business_integrity_errors jsonb NOT NULL DEFAULT '[]'::jsonb,
+  db_encryption_status text NOT NULL DEFAULT '',
+  db_encryption_errors jsonb NOT NULL DEFAULT '[]'::jsonb,
   debugger_detected boolean NOT NULL DEFAULT false,
   suspicious_modules jsonb NOT NULL DEFAULT '[]'::jsonb,
   vm_indicators jsonb NOT NULL DEFAULT '[]'::jsonb,

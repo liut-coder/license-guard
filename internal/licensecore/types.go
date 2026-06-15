@@ -140,6 +140,8 @@ type IntegrityReport struct {
 	WorkflowManifestSHA256         string    `json:"workflow_manifest_sha256,omitempty"`
 	BusinessIntegrityStatus        string    `json:"business_integrity_status,omitempty"`
 	BusinessIntegrityErrors        []string  `json:"business_integrity_errors,omitempty"`
+	DBEncryptionStatus             string    `json:"db_encryption_status,omitempty"`
+	DBEncryptionErrors             []string  `json:"db_encryption_errors,omitempty"`
 	DebuggerDetected               bool      `json:"debugger_detected"`
 	SuspiciousModules              []string  `json:"suspicious_modules"`
 	VMIndicators                   []string  `json:"vm_indicators"`
@@ -228,6 +230,8 @@ type IntegrityRequest struct {
 	WorkflowManifestSHA256         string   `json:"workflow_manifest_sha256"`
 	BusinessIntegrityStatus        string   `json:"business_integrity_status"`
 	BusinessIntegrityErrors        []string `json:"business_integrity_errors"`
+	DBEncryptionStatus             string   `json:"db_encryption_status"`
+	DBEncryptionErrors             []string `json:"db_encryption_errors"`
 	DebuggerDetected               bool     `json:"debugger_detected"`
 	SuspiciousModules              []string `json:"suspicious_modules"`
 	VMIndicators                   []string `json:"vm_indicators"`

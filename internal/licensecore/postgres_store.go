@@ -390,6 +390,7 @@ func queryIntegrityReports(ctx context.Context, q sqlQuerier) ([]IntegrityReport
 			protected_db_schema_hash, protected_db_tables_hash,
 			assets_manifest_sha256, workflow_manifest_sha256,
 			business_integrity_status, business_integrity_errors,
+			db_encryption_status, db_encryption_errors,
 			debugger_detected, suspicious_modules, vm_indicators, created_at
 		FROM integrity_reports
 		ORDER BY created_at, id`)
@@ -403,6 +404,7 @@ func queryIntegrityReports(ctx context.Context, q sqlQuerier) ([]IntegrityReport
 		var item IntegrityReport
 		var businessManifestSignatureValid sql.NullBool
 		var businessIntegrityErrors []byte
+		var dbEncryptionErrors []byte
 		var suspiciousModules []byte
 		var vmIndicators []byte
 		if err := rows.Scan(
@@ -423,6 +425,8 @@ func queryIntegrityReports(ctx context.Context, q sqlQuerier) ([]IntegrityReport
 			&item.WorkflowManifestSHA256,
 			&item.BusinessIntegrityStatus,
 			&businessIntegrityErrors,
+			&item.DBEncryptionStatus,
+			&dbEncryptionErrors,
 			&item.DebuggerDetected,
 			&suspiciousModules,
 			&vmIndicators,
@@ -435,6 +439,9 @@ func queryIntegrityReports(ctx context.Context, q sqlQuerier) ([]IntegrityReport
 			item.BusinessManifestSignatureValid = &value
 		}
 		if err := json.Unmarshal(businessIntegrityErrors, &item.BusinessIntegrityErrors); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(dbEncryptionErrors, &item.DBEncryptionErrors); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(suspiciousModules, &item.SuspiciousModules); err != nil {
@@ -779,6 +786,10 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 		if err != nil {
 			return err
 		}
+		dbEncryptionErrors, err := jsonForDB(item.DBEncryptionErrors, []string{})
+		if err != nil {
+			return err
+		}
 		suspiciousModules, err := jsonForDB(item.SuspiciousModules, []string{})
 		if err != nil {
 			return err
@@ -795,8 +806,9 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 				protected_db_schema_hash, protected_db_tables_hash,
 				assets_manifest_sha256, workflow_manifest_sha256,
 				business_integrity_status, business_integrity_errors,
+				db_encryption_status, db_encryption_errors,
 				debugger_detected, suspicious_modules, vm_indicators, created_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19::jsonb, $20::jsonb, $21)`,
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19::jsonb, $20, $21::jsonb, $22::jsonb, $23)`,
 			item.ID,
 			item.AppID,
 			item.DeviceID,
@@ -814,6 +826,8 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 			item.WorkflowManifestSHA256,
 			item.BusinessIntegrityStatus,
 			businessIntegrityErrors,
+			item.DBEncryptionStatus,
+			dbEncryptionErrors,
 			item.DebuggerDetected,
 			suspiciousModules,
 			vmIndicators,
