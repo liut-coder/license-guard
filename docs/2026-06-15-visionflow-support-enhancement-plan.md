@@ -538,7 +538,7 @@ Public Key 指纹
 
 - `TestChallengeEndpointCleansExpiredChallenges`
 
-- [ ] 日志和审计脱敏：
+- [x] 日志和审计脱敏：
 
 ```text
 license key 全量
@@ -548,6 +548,19 @@ DATABASE_URL 密码
 admin token
 license token 明文
 ```
+
+已落地：
+
+- `licenseguard-server` 启动日志不再打印 demo admin 密码和完整 demo license key。
+- 初始化错误日志会对 PostgreSQL URL 密码脱敏。
+- 审计日志 metadata 会对 `password`、`secret`、`token`、`private_key`、`signing_key`、`database_url`、`license_key` 等字段脱敏。
+- `license_key_prefix` / `key_prefix` 这类非敏感前缀保留，便于排障。
+
+验证：
+
+- `TestRedactLogMessageRedactsDatabaseURLPassword`
+- `TestRedactedPrefixDoesNotExposeFullValue`
+- `TestAuditLogRedactsSensitiveMetadata`
 
 ### P2：版本更新与客户交付优化
 

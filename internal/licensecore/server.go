@@ -3555,9 +3555,59 @@ func (s *Server) auditLocked(adminID string, action string, targetType string, t
 		TargetID:   targetID,
 		IP:         clientIP(r),
 		UserAgent:  r.UserAgent(),
-		Metadata:   metadata,
+		Metadata:   sanitizeAuditMetadata(metadata),
 		CreatedAt:  time.Now(),
 	})
+}
+
+func sanitizeAuditMetadata(metadata map[string]any) map[string]any {
+	if metadata == nil {
+		return nil
+	}
+	out := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		out[key] = sanitizeAuditValue(key, value)
+	}
+	return out
+}
+
+func sanitizeAuditValue(key string, value any) any {
+	if isSensitiveAuditKey(key) {
+		return "[redacted]"
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		return sanitizeAuditMetadata(typed)
+	case []any:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, sanitizeAuditValue("", item))
+		}
+		return items
+	default:
+		return value
+	}
+}
+
+func isSensitiveAuditKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	if key == "license_key_prefix" || key == "key_prefix" {
+		return false
+	}
+	for _, marker := range []string{
+		"password",
+		"secret",
+		"token",
+		"private_key",
+		"signing_key",
+		"database_url",
+		"license_key",
+	} {
+		if strings.Contains(key, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, out any) bool {

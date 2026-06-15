@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"license-guard/internal/licensecore"
@@ -30,11 +32,11 @@ func main() {
 
 	store, err := buildStore(*storeMode, *dataDir, *databaseURL, *autoMigrate, *migrationsDir)
 	if err != nil {
-		log.Fatalf("init store: %v", err)
+		log.Fatalf("init store: %s", redactLogMessage(err.Error()))
 	}
 	api, err := licensecore.NewServerWithStore(resolvedKeyDir, store)
 	if err != nil {
-		log.Fatalf("init license guard server: %v", err)
+		log.Fatalf("init license guard server: %s", redactLogMessage(err.Error()))
 	}
 	api.SetCORSAllowedOrigins(strings.Split(*corsAllowedOrigins, ","))
 
@@ -58,9 +60,9 @@ func main() {
 	log.Printf("License Guard API listening on http://%s", *addr)
 	log.Printf("License Guard Admin UI: http://%s/admin-ui/", *addr)
 	log.Printf("Storage backend: %s", store.Name())
-	log.Printf("Demo admin: %s / %s", licensecore.DemoAdminAccount, licensecore.DemoAdminPass)
+	log.Printf("Demo admin: %s / [redacted]", licensecore.DemoAdminAccount)
 	log.Printf("Demo app: %s", licensecore.DemoAppID)
-	log.Printf("Demo license: %s", licensecore.DemoLicenseKey)
+	log.Printf("Demo license prefix: %s", redactedPrefix(licensecore.DemoLicenseKey))
 	log.Printf("Demo integrity hash: %s", licensecore.DemoBinaryHash)
 	log.Fatal(http.ListenAndServe(*addr, mux))
 }
@@ -89,4 +91,35 @@ func envOrDefault(key string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+var postgresURLPattern = regexp.MustCompile(`postgres(?:ql)?://[^\s'"<>]+`)
+
+func redactLogMessage(message string) string {
+	return postgresURLPattern.ReplaceAllStringFunc(message, redactURLPassword)
+}
+
+func redactURLPassword(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.User == nil {
+		return raw
+	}
+	username := parsed.User.Username()
+	if username == "" {
+		parsed.User = url.UserPassword("[redacted]", "[redacted]")
+		return parsed.String()
+	}
+	parsed.User = url.UserPassword(username, "[redacted]")
+	return parsed.String()
+}
+
+func redactedPrefix(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "[redacted]"
+	}
+	if len(value) <= 8 {
+		return value + "..."
+	}
+	return value[:8] + "..."
 }

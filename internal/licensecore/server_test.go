@@ -528,6 +528,49 @@ func TestAdminLogoutInvalidatesSessionAndWritesAuditLog(t *testing.T) {
 	}
 }
 
+func TestAuditLogRedactsSensitiveMetadata(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/test", nil)
+	req.RemoteAddr = "203.0.113.10:443"
+	req.Header.Set("User-Agent", "audit-test")
+
+	server.mu.Lock()
+	server.auditLocked("admin_demo", "test.sensitive", "test", "target", req, map[string]any{
+		"license_key":        "LG-SHOULD-NOT-LEAK",
+		"license_key_prefix": "LG-SAFE-PREFIX",
+		"admin_token":        "adm_should_not_leak",
+		"database_url":       "postgres://user:password@example/license_guard",
+		"safe":               "kept",
+		"nested": map[string]any{
+			"sdk_secret": "lgsk_should_not_leak",
+			"count":      2,
+		},
+	})
+	event := server.data.AuditLogs[len(server.data.AuditLogs)-1]
+	server.mu.Unlock()
+
+	metadataJSON, err := json.Marshal(event.Metadata)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	all := string(metadataJSON)
+	for _, leaked := range []string{"LG-SHOULD-NOT-LEAK", "adm_should_not_leak", "password@example", "lgsk_should_not_leak"} {
+		if strings.Contains(all, leaked) {
+			t.Fatalf("audit metadata leaked %q: %s", leaked, all)
+		}
+	}
+	if event.Metadata["safe"] != "kept" || event.Metadata["license_key_prefix"] != "LG-SAFE-PREFIX" {
+		t.Fatalf("safe metadata was not preserved: %#v", event.Metadata)
+	}
+	nested, ok := event.Metadata["nested"].(map[string]any)
+	if !ok || nested["sdk_secret"] != "[redacted]" || nested["count"] != 2 {
+		t.Fatalf("nested metadata was not sanitized correctly: %#v", event.Metadata["nested"])
+	}
+}
+
 func TestAdminPasswordChangeUpdatesHashInvalidatesOtherSessionsAndWritesAuditLog(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
