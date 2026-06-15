@@ -384,6 +384,147 @@ func TestSettingsPatchAppliesDefaultsAndTokenPolicy(t *testing.T) {
 	}
 }
 
+func TestBusinessManifestMismatchDeniesVerificationAndPersistsReport(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	server.mu.Lock()
+	release := server.findReleaseByIDLocked(DemoAppID, "rel_demo_nax_142")
+	if release == nil {
+		server.mu.Unlock()
+		t.Fatal("demo release not found")
+	}
+	release.ResourceManifestHash = "expected-business-manifest"
+	server.mu.Unlock()
+
+	verifyResp := activateDemoLicense(t, server, "business-mismatch-install", map[string]any{
+		"business_manifest_sha256":          "actual-business-manifest",
+		"business_manifest_signature_valid": true,
+		"protected_db_schema_hash":          "schema-v1",
+		"protected_db_tables_hash":          "tables-v1",
+		"assets_manifest_sha256":            "assets-v1",
+		"workflow_manifest_sha256":          "workflow-v1",
+		"business_integrity_status":         "ok",
+	})
+	if verifyResp.Allowed || verifyResp.Code != "INTEGRITY_FAILED" {
+		t.Fatalf("verify response = %#v, want integrity denial", verifyResp)
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if len(server.data.IntegrityReports) == 0 {
+		t.Fatal("integrity report was not persisted")
+	}
+	report := server.data.IntegrityReports[len(server.data.IntegrityReports)-1]
+	if report.BusinessManifestSHA256 != "actual-business-manifest" ||
+		report.ProtectedDBSchemaHash != "schema-v1" ||
+		report.ProtectedDBTablesHash != "tables-v1" ||
+		report.AssetsManifestSHA256 != "assets-v1" ||
+		report.WorkflowManifestSHA256 != "workflow-v1" {
+		t.Fatalf("business integrity fields were not persisted: %#v", report)
+	}
+	if report.BusinessManifestSignatureValid == nil || !*report.BusinessManifestSignatureValid {
+		t.Fatalf("business manifest signature flag = %#v, want true", report.BusinessManifestSignatureValid)
+	}
+	if !hasRiskEvent(server.data.RiskEvents, "business_manifest_mismatch") {
+		t.Fatalf("business_manifest_mismatch risk event not found in %#v", server.data.RiskEvents)
+	}
+}
+
+func TestBusinessManifestSignatureInvalidDeniesVerification(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	verifyResp := activateDemoLicense(t, server, "signature-invalid-install", map[string]any{
+		"business_manifest_sha256":          "signed-manifest",
+		"business_manifest_signature_valid": false,
+		"business_integrity_status":         "ok",
+	})
+	if verifyResp.Allowed || verifyResp.Code != "INTEGRITY_FAILED" {
+		t.Fatalf("verify response = %#v, want integrity denial", verifyResp)
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if !hasRiskEvent(server.data.RiskEvents, "business_manifest_signature_invalid") {
+		t.Fatalf("business_manifest_signature_invalid risk event not found in %#v", server.data.RiskEvents)
+	}
+	report := server.data.IntegrityReports[len(server.data.IntegrityReports)-1]
+	if report.BusinessManifestSignatureValid == nil || *report.BusinessManifestSignatureValid {
+		t.Fatalf("business manifest signature flag = %#v, want false", report.BusinessManifestSignatureValid)
+	}
+}
+
+func TestHeartbeatRecordsBusinessIntegrityAndDeniesTamperedStatus(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+
+	activateResp := activateDemoLicense(t, server, "heartbeat-business-install", map[string]any{
+		"business_manifest_sha256":          "heartbeat-manifest",
+		"business_manifest_signature_valid": true,
+		"business_integrity_status":         "ok",
+	})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+
+	heartbeatPayload := map[string]any{
+		"app_id":        DemoAppID,
+		"platform":      "windows",
+		"license_token": activateResp.LicenseToken,
+		"install_id":    "heartbeat-business-install",
+		"app_version":   "1.4.2",
+		"integrity": map[string]any{
+			"business_manifest_sha256":          "heartbeat-manifest",
+			"business_manifest_signature_valid": true,
+			"protected_db_schema_hash":          "schema-v2",
+			"protected_db_tables_hash":          "tables-v2",
+			"business_integrity_status":         "tampered",
+			"business_integrity_errors":         []string{"protected table hash mismatch"},
+		},
+	}
+	heartbeatBody, err := json.Marshal(heartbeatPayload)
+	if err != nil {
+		t.Fatalf("marshal heartbeat payload: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/heartbeat", bytes.NewReader(heartbeatBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("heartbeat status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var heartbeatResp struct {
+		OK   bool   `json:"ok"`
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &heartbeatResp); err != nil {
+		t.Fatalf("decode heartbeat response: %v", err)
+	}
+	if heartbeatResp.OK || heartbeatResp.Code != "INTEGRITY_FAILED" {
+		t.Fatalf("heartbeat response = %#v, want integrity denial", heartbeatResp)
+	}
+
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if !hasRiskEvent(server.data.RiskEvents, "business_integrity_failed") {
+		t.Fatalf("business_integrity_failed risk event not found in %#v", server.data.RiskEvents)
+	}
+	report := server.data.IntegrityReports[len(server.data.IntegrityReports)-1]
+	if report.BusinessIntegrityStatus != "tampered" ||
+		report.ProtectedDBSchemaHash != "schema-v2" ||
+		report.ProtectedDBTablesHash != "tables-v2" ||
+		len(report.BusinessIntegrityErrors) != 1 {
+		t.Fatalf("heartbeat integrity report = %#v, want business fields", report)
+	}
+}
+
 func TestRotateSDKKeyReturnsSecretOnceAndWritesAuditLog(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -641,6 +782,81 @@ func TestIntegrationBundleOmitsSecretsAndContainsSkeleton(t *testing.T) {
 	if !strings.Contains(files["internal/licenseguard/errors.go"], "INTEGRITY_FAILED") {
 		t.Fatalf("errors skeleton missing code mapping: %s", files["internal/licenseguard/errors.go"])
 	}
+}
+
+func activateDemoLicense(t *testing.T, server *Server, installID string, integrityOverrides map[string]any) VerifyResponse {
+	t.Helper()
+	challengeBody, err := json.Marshal(map[string]any{
+		"app_id":      DemoAppID,
+		"platform":    "windows",
+		"install_id":  installID,
+		"app_version": "1.4.2",
+	})
+	if err != nil {
+		t.Fatalf("marshal challenge body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/challenge", bytes.NewReader(challengeBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("challenge status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var challengeResp struct {
+		ChallengeID string `json:"challenge_id"`
+		Nonce       string `json:"nonce"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &challengeResp); err != nil {
+		t.Fatalf("decode challenge response: %v", err)
+	}
+
+	integrity := map[string]any{
+		"app_version":       "1.4.2",
+		"main_binary_hash":  DemoBinaryHash,
+		"signer_thumbprint": DemoSigner,
+	}
+	for key, value := range integrityOverrides {
+		integrity[key] = value
+	}
+	activateBody, err := json.Marshal(map[string]any{
+		"app_id":       DemoAppID,
+		"platform":     "windows",
+		"license_key":  DemoLicenseKey,
+		"challenge_id": challengeResp.ChallengeID,
+		"nonce":        challengeResp.Nonce,
+		"device": map[string]any{
+			"install_id":        installID,
+			"fingerprint":       installID + "-fingerprint",
+			"os":                "windows",
+			"os_version":        "Windows 11",
+			"machine_name_hash": installID + "-machine",
+		},
+		"integrity": integrity,
+	})
+	if err != nil {
+		t.Fatalf("marshal activate body: %v", err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/activate", bytes.NewReader(activateBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("activate status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var verifyResp VerifyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &verifyResp); err != nil {
+		t.Fatalf("decode activate response: %v", err)
+	}
+	return verifyResp
+}
+
+func hasRiskEvent(events []RiskEvent, eventType string) bool {
+	for _, event := range events {
+		if event.EventType == eventType {
+			return true
+		}
+	}
+	return false
 }
 
 func getAppDetailMap(t *testing.T, server *Server, token string) map[string]any {

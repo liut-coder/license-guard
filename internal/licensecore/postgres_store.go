@@ -340,8 +340,12 @@ func queryActivations(ctx context.Context, q sqlQuerier) ([]Activation, error) {
 func queryIntegrityReports(ctx context.Context, q sqlQuerier) ([]IntegrityReport, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, app_id, device_id, release_id, verify_session_id, platform,
-			app_version, main_binary_hash, signer_thumbprint, debugger_detected,
-			suspicious_modules, vm_indicators, created_at
+			app_version, main_binary_hash, signer_thumbprint,
+			business_manifest_sha256, business_manifest_signature_valid,
+			protected_db_schema_hash, protected_db_tables_hash,
+			assets_manifest_sha256, workflow_manifest_sha256,
+			business_integrity_status, business_integrity_errors,
+			debugger_detected, suspicious_modules, vm_indicators, created_at
 		FROM integrity_reports
 		ORDER BY created_at, id`)
 	if err != nil {
@@ -352,6 +356,8 @@ func queryIntegrityReports(ctx context.Context, q sqlQuerier) ([]IntegrityReport
 	var items []IntegrityReport
 	for rows.Next() {
 		var item IntegrityReport
+		var businessManifestSignatureValid sql.NullBool
+		var businessIntegrityErrors []byte
 		var suspiciousModules []byte
 		var vmIndicators []byte
 		if err := rows.Scan(
@@ -364,11 +370,26 @@ func queryIntegrityReports(ctx context.Context, q sqlQuerier) ([]IntegrityReport
 			&item.AppVersion,
 			&item.MainBinaryHash,
 			&item.SignerThumbprint,
+			&item.BusinessManifestSHA256,
+			&businessManifestSignatureValid,
+			&item.ProtectedDBSchemaHash,
+			&item.ProtectedDBTablesHash,
+			&item.AssetsManifestSHA256,
+			&item.WorkflowManifestSHA256,
+			&item.BusinessIntegrityStatus,
+			&businessIntegrityErrors,
 			&item.DebuggerDetected,
 			&suspiciousModules,
 			&vmIndicators,
 			&item.CreatedAt,
 		); err != nil {
+			return nil, err
+		}
+		if businessManifestSignatureValid.Valid {
+			value := businessManifestSignatureValid.Bool
+			item.BusinessManifestSignatureValid = &value
+		}
+		if err := json.Unmarshal(businessIntegrityErrors, &item.BusinessIntegrityErrors); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(suspiciousModules, &item.SuspiciousModules); err != nil {
@@ -678,6 +699,10 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 	}
 
 	for _, item := range data.IntegrityReports {
+		businessIntegrityErrors, err := jsonForDB(item.BusinessIntegrityErrors, []string{})
+		if err != nil {
+			return err
+		}
 		suspiciousModules, err := jsonForDB(item.SuspiciousModules, []string{})
 		if err != nil {
 			return err
@@ -689,9 +714,13 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO integrity_reports (
 				id, app_id, device_id, release_id, verify_session_id, platform,
-				app_version, main_binary_hash, signer_thumbprint, debugger_detected,
-				suspicious_modules, vm_indicators, created_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13)`,
+				app_version, main_binary_hash, signer_thumbprint,
+				business_manifest_sha256, business_manifest_signature_valid,
+				protected_db_schema_hash, protected_db_tables_hash,
+				assets_manifest_sha256, workflow_manifest_sha256,
+				business_integrity_status, business_integrity_errors,
+				debugger_detected, suspicious_modules, vm_indicators, created_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19::jsonb, $20::jsonb, $21)`,
 			item.ID,
 			item.AppID,
 			item.DeviceID,
@@ -701,6 +730,14 @@ func insertPostgresData(ctx context.Context, tx *sql.Tx, data Data) error {
 			item.AppVersion,
 			item.MainBinaryHash,
 			item.SignerThumbprint,
+			item.BusinessManifestSHA256,
+			item.BusinessManifestSignatureValid,
+			item.ProtectedDBSchemaHash,
+			item.ProtectedDBTablesHash,
+			item.AssetsManifestSHA256,
+			item.WorkflowManifestSHA256,
+			item.BusinessIntegrityStatus,
+			businessIntegrityErrors,
 			item.DebuggerDetected,
 			suspiciousModules,
 			vmIndicators,

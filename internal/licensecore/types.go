@@ -107,19 +107,27 @@ type Activation struct {
 }
 
 type IntegrityReport struct {
-	ID                string    `json:"id"`
-	AppID             string    `json:"app_id"`
-	DeviceID          string    `json:"device_id"`
-	ReleaseID         string    `json:"release_id"`
-	VerifySessionID   string    `json:"verify_session_id"`
-	Platform          string    `json:"platform"`
-	AppVersion        string    `json:"app_version"`
-	MainBinaryHash    string    `json:"main_binary_hash"`
-	SignerThumbprint  string    `json:"signer_thumbprint"`
-	DebuggerDetected  bool      `json:"debugger_detected"`
-	SuspiciousModules []string  `json:"suspicious_modules"`
-	VMIndicators      []string  `json:"vm_indicators"`
-	CreatedAt         time.Time `json:"created_at"`
+	ID                             string    `json:"id"`
+	AppID                          string    `json:"app_id"`
+	DeviceID                       string    `json:"device_id"`
+	ReleaseID                      string    `json:"release_id"`
+	VerifySessionID                string    `json:"verify_session_id"`
+	Platform                       string    `json:"platform"`
+	AppVersion                     string    `json:"app_version"`
+	MainBinaryHash                 string    `json:"main_binary_hash"`
+	SignerThumbprint               string    `json:"signer_thumbprint"`
+	BusinessManifestSHA256         string    `json:"business_manifest_sha256,omitempty"`
+	BusinessManifestSignatureValid *bool     `json:"business_manifest_signature_valid,omitempty"`
+	ProtectedDBSchemaHash          string    `json:"protected_db_schema_hash,omitempty"`
+	ProtectedDBTablesHash          string    `json:"protected_db_tables_hash,omitempty"`
+	AssetsManifestSHA256           string    `json:"assets_manifest_sha256,omitempty"`
+	WorkflowManifestSHA256         string    `json:"workflow_manifest_sha256,omitempty"`
+	BusinessIntegrityStatus        string    `json:"business_integrity_status,omitempty"`
+	BusinessIntegrityErrors        []string  `json:"business_integrity_errors,omitempty"`
+	DebuggerDetected               bool      `json:"debugger_detected"`
+	SuspiciousModules              []string  `json:"suspicious_modules"`
+	VMIndicators                   []string  `json:"vm_indicators"`
+	CreatedAt                      time.Time `json:"created_at"`
 }
 
 type RiskEvent struct {
@@ -192,12 +200,20 @@ type DeviceInfo struct {
 }
 
 type IntegrityRequest struct {
-	AppVersion        string   `json:"app_version"`
-	MainBinaryHash    string   `json:"main_binary_hash"`
-	SignerThumbprint  string   `json:"signer_thumbprint"`
-	DebuggerDetected  bool     `json:"debugger_detected"`
-	SuspiciousModules []string `json:"suspicious_modules"`
-	VMIndicators      []string `json:"vm_indicators"`
+	AppVersion                     string   `json:"app_version"`
+	MainBinaryHash                 string   `json:"main_binary_hash"`
+	SignerThumbprint               string   `json:"signer_thumbprint"`
+	BusinessManifestSHA256         string   `json:"business_manifest_sha256"`
+	BusinessManifestSignatureValid *bool    `json:"business_manifest_signature_valid,omitempty"`
+	ProtectedDBSchemaHash          string   `json:"protected_db_schema_hash"`
+	ProtectedDBTablesHash          string   `json:"protected_db_tables_hash"`
+	AssetsManifestSHA256           string   `json:"assets_manifest_sha256"`
+	WorkflowManifestSHA256         string   `json:"workflow_manifest_sha256"`
+	BusinessIntegrityStatus        string   `json:"business_integrity_status"`
+	BusinessIntegrityErrors        []string `json:"business_integrity_errors"`
+	DebuggerDetected               bool     `json:"debugger_detected"`
+	SuspiciousModules              []string `json:"suspicious_modules"`
+	VMIndicators                   []string `json:"vm_indicators"`
 }
 
 type RiskResult struct {

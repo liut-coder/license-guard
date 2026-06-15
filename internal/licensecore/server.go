@@ -1053,10 +1053,12 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		AppID        string `json:"app_id"`
-		LicenseToken string `json:"license_token"`
-		InstallID    string `json:"install_id"`
-		AppVersion   string `json:"app_version"`
+		AppID        string            `json:"app_id"`
+		Platform     string            `json:"platform"`
+		LicenseToken string            `json:"license_token"`
+		InstallID    string            `json:"install_id"`
+		AppVersion   string            `json:"app_version"`
+		Integrity    *IntegrityRequest `json:"integrity"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -1071,10 +1073,11 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now()
 	s.mu.Lock()
 	activation := s.findActivationLocked(claims.LicenseID, claims.DeviceID)
 	if activation != nil {
-		activation.LastVerifiedAt = time.Now()
+		activation.LastVerifiedAt = now
 	}
 	device := s.findDeviceByIDLocked(claims.DeviceID)
 	if device != nil {
@@ -1089,7 +1092,52 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "TOKEN_DEVICE_MISMATCH", "授权 token 与当前设备不匹配")
 			return
 		}
-		device.LastSeenAt = time.Now()
+		device.LastSeenAt = now
+	}
+
+	platform := req.Platform
+	if platform == "" && device != nil {
+		platform = device.Platform
+	}
+	if platform == "" {
+		platform = "windows"
+	}
+	var heartbeatRisk *RiskResult
+	if req.Integrity != nil {
+		integrity := *req.Integrity
+		if integrity.AppVersion == "" {
+			integrity.AppVersion = req.AppVersion
+		}
+		if !integrityRequestHasEvidence(integrity) {
+			req.Integrity = nil
+		} else {
+			risk, release, deny := s.evaluateIntegrityLocked(claims.AppID, claims.DeviceID, claims.LicenseID, clientVerificationInput{
+				AppID:     claims.AppID,
+				Platform:  platform,
+				Integrity: integrity,
+			})
+			heartbeatRisk = &risk
+			if device != nil {
+				device.RiskScore = risk.Score
+			}
+			s.data.IntegrityReports = append(s.data.IntegrityReports, newIntegrityReport(claims.AppID, claims.DeviceID, platform, integrity, release))
+			if deny {
+				err = s.saveLocked()
+				s.mu.Unlock()
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "SAVE_FAILED", err.Error())
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"ok":          false,
+					"code":        "INTEGRITY_FAILED",
+					"message":     "完整性验证失败",
+					"risk":        risk,
+					"server_time": now,
+				})
+				return
+			}
+		}
 	}
 	err = s.saveLocked()
 	s.mu.Unlock()
@@ -1097,7 +1145,11 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "SAVE_FAILED", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "server_time": time.Now()})
+	resp := map[string]any{"ok": true, "server_time": now}
+	if heartbeatRisk != nil {
+		resp["risk"] = *heartbeatRisk
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleDeactivate(w http.ResponseWriter, r *http.Request) {
@@ -1271,23 +1323,7 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 	device.RiskScore = risk.Score
 	device.LastSeenAt = time.Now()
 
-	report := IntegrityReport{
-		ID:                newID("ir"),
-		AppID:             app.AppKey,
-		DeviceID:          device.ID,
-		Platform:          input.Platform,
-		AppVersion:        input.Integrity.AppVersion,
-		MainBinaryHash:    input.Integrity.MainBinaryHash,
-		SignerThumbprint:  input.Integrity.SignerThumbprint,
-		DebuggerDetected:  input.Integrity.DebuggerDetected,
-		SuspiciousModules: input.Integrity.SuspiciousModules,
-		VMIndicators:      input.Integrity.VMIndicators,
-		CreatedAt:         time.Now(),
-	}
-	if release != nil {
-		report.ReleaseID = release.ID
-	}
-	s.data.IntegrityReports = append(s.data.IntegrityReports, report)
+	s.data.IntegrityReports = append(s.data.IntegrityReports, newIntegrityReport(app.AppKey, device.ID, input.Platform, input.Integrity, release))
 
 	if deny {
 		_ = s.saveLocked()
@@ -1371,7 +1407,35 @@ func (s *Server) evaluateIntegrityLocked(appID string, deviceID string, licenseI
 				actions = append(actions, "deny")
 				s.addRiskEventLocked(appID, deviceID, licenseID, "signature_mismatch", "high", "deny", "签名证书指纹不匹配", map[string]any{"expected": exactRelease.SignerThumbprint, "actual": input.Integrity.SignerThumbprint})
 			}
+			if exactRelease.ResourceManifestHash != "" && !strings.EqualFold(exactRelease.ResourceManifestHash, input.Integrity.BusinessManifestSHA256) {
+				score += 90
+				deny = true
+				actions = append(actions, "deny")
+				s.addRiskEventLocked(appID, deviceID, licenseID, "business_manifest_mismatch", "high", "deny", "业务 manifest hash 与发布版本不匹配", map[string]any{
+					"expected":   exactRelease.ResourceManifestHash,
+					"actual":     input.Integrity.BusinessManifestSHA256,
+					"release_id": exactRelease.ID,
+				})
+			}
 		}
+	}
+	if input.Integrity.BusinessManifestSignatureValid != nil && !*input.Integrity.BusinessManifestSignatureValid {
+		score += 90
+		deny = true
+		actions = append(actions, "deny")
+		s.addRiskEventLocked(appID, deviceID, licenseID, "business_manifest_signature_invalid", "high", "deny", "业务 manifest 签名无效", map[string]any{
+			"business_manifest_sha256": input.Integrity.BusinessManifestSHA256,
+		})
+	}
+	switch strings.ToLower(strings.TrimSpace(input.Integrity.BusinessIntegrityStatus)) {
+	case "failed", "invalid", "tampered":
+		score += 85
+		deny = true
+		actions = append(actions, "deny")
+		s.addRiskEventLocked(appID, deviceID, licenseID, "business_integrity_failed", "high", "deny", "业务完整性自检失败", map[string]any{
+			"status": input.Integrity.BusinessIntegrityStatus,
+			"errors": input.Integrity.BusinessIntegrityErrors,
+		})
 	}
 	if input.Integrity.DebuggerDetected {
 		score += 40
@@ -1403,6 +1467,51 @@ func (s *Server) evaluateIntegrityLocked(appID string, deviceID string, licenseI
 	}
 
 	return RiskResult{Level: level, Score: score, Actions: uniqueStrings(actions)}, exactRelease, deny
+}
+
+func newIntegrityReport(appID string, deviceID string, platform string, integrity IntegrityRequest, release *AppRelease) IntegrityReport {
+	report := IntegrityReport{
+		ID:                             newID("ir"),
+		AppID:                          appID,
+		DeviceID:                       deviceID,
+		Platform:                       platform,
+		AppVersion:                     integrity.AppVersion,
+		MainBinaryHash:                 integrity.MainBinaryHash,
+		SignerThumbprint:               integrity.SignerThumbprint,
+		BusinessManifestSHA256:         integrity.BusinessManifestSHA256,
+		BusinessManifestSignatureValid: integrity.BusinessManifestSignatureValid,
+		ProtectedDBSchemaHash:          integrity.ProtectedDBSchemaHash,
+		ProtectedDBTablesHash:          integrity.ProtectedDBTablesHash,
+		AssetsManifestSHA256:           integrity.AssetsManifestSHA256,
+		WorkflowManifestSHA256:         integrity.WorkflowManifestSHA256,
+		BusinessIntegrityStatus:        integrity.BusinessIntegrityStatus,
+		BusinessIntegrityErrors:        integrity.BusinessIntegrityErrors,
+		DebuggerDetected:               integrity.DebuggerDetected,
+		SuspiciousModules:              integrity.SuspiciousModules,
+		VMIndicators:                   integrity.VMIndicators,
+		CreatedAt:                      time.Now(),
+	}
+	if release != nil {
+		report.ReleaseID = release.ID
+	}
+	return report
+}
+
+func integrityRequestHasEvidence(integrity IntegrityRequest) bool {
+	return integrity.AppVersion != "" ||
+		integrity.MainBinaryHash != "" ||
+		integrity.SignerThumbprint != "" ||
+		integrity.BusinessManifestSHA256 != "" ||
+		integrity.BusinessManifestSignatureValid != nil ||
+		integrity.ProtectedDBSchemaHash != "" ||
+		integrity.ProtectedDBTablesHash != "" ||
+		integrity.AssetsManifestSHA256 != "" ||
+		integrity.WorkflowManifestSHA256 != "" ||
+		integrity.BusinessIntegrityStatus != "" ||
+		len(integrity.BusinessIntegrityErrors) > 0 ||
+		integrity.DebuggerDetected ||
+		len(integrity.SuspiciousModules) > 0 ||
+		len(integrity.VMIndicators) > 0
 }
 
 func (s *Server) updateInfoLocked(appID string, platform string, currentVersion string, deviceID string) *UpdateInfo {
@@ -2099,14 +2208,22 @@ func integrityEvidence(report *IntegrityReport) map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"report_id":          report.ID,
-		"app_version":        report.AppVersion,
-		"main_binary_hash":   report.MainBinaryHash,
-		"signer_thumbprint":  report.SignerThumbprint,
-		"debugger_detected":  report.DebuggerDetected,
-		"suspicious_modules": report.SuspiciousModules,
-		"vm_indicators":      report.VMIndicators,
-		"created_at":         report.CreatedAt,
+		"report_id":                         report.ID,
+		"app_version":                       report.AppVersion,
+		"main_binary_hash":                  report.MainBinaryHash,
+		"signer_thumbprint":                 report.SignerThumbprint,
+		"business_manifest_sha256":          report.BusinessManifestSHA256,
+		"business_manifest_signature_valid": report.BusinessManifestSignatureValid,
+		"protected_db_schema_hash":          report.ProtectedDBSchemaHash,
+		"protected_db_tables_hash":          report.ProtectedDBTablesHash,
+		"assets_manifest_sha256":            report.AssetsManifestSHA256,
+		"workflow_manifest_sha256":          report.WorkflowManifestSHA256,
+		"business_integrity_status":         report.BusinessIntegrityStatus,
+		"business_integrity_errors":         report.BusinessIntegrityErrors,
+		"debugger_detected":                 report.DebuggerDetected,
+		"suspicious_modules":                report.SuspiciousModules,
+		"vm_indicators":                     report.VMIndicators,
+		"created_at":                        report.CreatedAt,
 	}
 }
 

@@ -7,7 +7,7 @@
 
 ## 0. 当前版本基线
 
-- 当前阶段：License Guard 已具备服务端、Admin UI、PostgreSQL 迁移、Windows Go SDK、demo、smoke、部署模板、集成包和 Release 发布 CLI；VisionFlow 授权链路已能本地联调，但试用配置和授权拦截体验仍偏工程化。
+- 当前阶段：License Guard 已具备服务端、Admin UI、PostgreSQL 迁移、Windows Go SDK、demo、smoke、部署模板、集成包、Release 发布 CLI 和 VisionFlow 业务完整性摘要上报；VisionFlow 授权链路已能本地联调，但试用配置和授权拦截体验仍偏工程化。
 - 当前目标：将 License Guard 从“授权 API + SDK”升级为 VisionFlow 的授权产品化控制中心，覆盖一键试用、能力策略、可视化配置、Release 自动化、授权诊断和生产安全基线。
 - 分支策略：用户确认 `license-guard` 使用 `main`。
 - 接入约束：不追求完全零配置；客户端至少需要可信的 Endpoint、App ID、Public Key 和 license 激活入口。
@@ -181,7 +181,7 @@ policy 命中结果
 最近一次 capability deny 原因
 ```
 
-- [ ] 扩展 VisionFlow integrity report 字段。
+- [x] 扩展 VisionFlow integrity report 字段。
 
 License Guard 不读取客户端本地 SQLite，也不直接校验图片文件；它只接收 VisionFlow 上报的摘要并和 Release 基线比对。
 
@@ -202,9 +202,19 @@ business_integrity_errors
 
 - `business_manifest_signature_valid=false`：拒绝受控能力，记录 high risk。
 - Release 要求的 `business_manifest_sha256` 与客户端上报不一致：拒绝受控能力，记录 `business_manifest_mismatch`。
-- `protected_db_tables_hash` 不匹配：拒绝受控能力，记录 `protected_db_definition_mismatch`。
-- `assets_manifest_sha256` 不匹配：按策略拒绝或降级，记录 `asset_manifest_mismatch`。
+- `business_integrity_status=failed|invalid|tampered`：拒绝受控能力，记录 `business_integrity_failed`。
+- `protected_db_tables_hash` 不匹配：Release 增加独立 DB 基线字段后拒绝受控能力，记录 `protected_db_definition_mismatch`。
+- `assets_manifest_sha256` 不匹配：Release 增加独立 assets 基线字段后按策略拒绝或降级，记录 `asset_manifest_mismatch`。
 - 用户运行数据 hash 不进入拒绝依据，避免把正常配置、记录、evidence 清理误判为破解。
+
+已落地：
+
+- `/v1/activate` 和 `/v1/verify` 可接收并保存上述业务完整性字段。
+- `/v1/heartbeat` 支持可选 `integrity` 对象；未传 `integrity` 的旧心跳只更新时间，不触发业务完整性误判。
+- PostgreSQL `integrity_reports` 已增加业务 manifest、受保护 DB、assets、workflow 和业务完整性错误字段。
+- 当前 P0 先复用 Release 的 `resource_manifest_hash` 作为 `business_manifest_sha256` 发布基线，避免一次性扩大 Release schema。
+- 当前已强判 `business_manifest_signature_valid=false`、`business_manifest_mismatch`、`business_integrity_status=failed|invalid|tampered`。
+- 验证：`go test ./internal/licensecore`。
 
 客户端本地 SQLite 加密边界：
 
@@ -593,8 +603,8 @@ hash 字段缺失
 - [ ] 默认 VisionFlow capability policy 存在，且未知 capability 不会被默认放行。
 - [ ] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
 - [ ] 诊断 API 能解释一次 capability deny 的具体原因。
-- [ ] verify/heartbeat 能接收并保存 VisionFlow 业务完整性字段。
-- [ ] 业务 manifest 签名无效或 hash 不匹配时返回拒绝或风险事件。
+- [x] verify/heartbeat 能接收并保存 VisionFlow 业务完整性字段。
+- [x] 业务 manifest 签名无效或 hash 不匹配时返回拒绝或风险事件。
 
 ### P1 验收
 
