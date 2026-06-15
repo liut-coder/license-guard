@@ -561,6 +561,8 @@ download_url
 - `TestVerifyReturnsOptionalUpdateInfo` 覆盖普通更新时 `update.available=true` 且字段完整。
 - `TestVerifyReturnsRequiredUpdateForMandatoryRelease` 覆盖 `mandatory=true` 时 `update.required=true`。
 - `TestVerifyReturnsRequiredUpdateBelowMinSupportedVersion` 覆盖 `min_supported_version` 强制旧版本升级。
+- `TestVerifySuppressesOptionalUpdateOutsideRollout` 覆盖未命中灰度时不返回普通可选更新。
+- `TestVerifyOptionalUpdateRolloutStableForSameDevice` 覆盖同一设备多次 verify 的灰度结果稳定。
 - `TestBlockedAppVersionDeniesVerification` 覆盖 blocked release 拒绝客户端 verify 并记录 `app_version_blocked`。
 
 - [ ] 提供接入包导入说明，面向 VisionFlow 客户部署。
@@ -698,7 +700,7 @@ hash 字段缺失
 - [ ] 客户授权包可生成并包含 license、entitlements、设备数、过期时间。
 - [x] Release 字段缺失时 Admin/API 给出明确错误。
 - [x] `min_supported_version` 能强制旧版本升级。
-- [ ] `rollout_percent` 对同一设备结果稳定。
+- [x] `rollout_percent` 对同一设备结果稳定。
 - [x] 版本 blocked 后客户端 verify 返回拒绝。
 
 ### P3 验收

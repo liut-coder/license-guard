@@ -143,6 +143,64 @@ func TestVerifyReturnsRequiredUpdateBelowMinSupportedVersion(t *testing.T) {
 	}
 }
 
+func TestVerifySuppressesOptionalUpdateOutsideRollout(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	addDemoUpdateRelease(t, server, AppRelease{
+		ID:             "rel_demo_nax_150_rollout_zero",
+		Version:        "1.5.0",
+		BuildNumber:    10500,
+		DownloadURL:    "https://download.example.com/nax-desktop/1.5.0/setup.exe",
+		PackageSHA256:  "package-150-sha256",
+		RolloutPercent: 0,
+	})
+
+	activateResp := activateDemoLicense(t, server, "zero-rollout-install", map[string]any{})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+	verifyResp := verifyLicenseTokenForApp(t, server, DemoAppID, activateResp.LicenseToken, "zero-rollout-install", "1.4.2", nil)
+	if !verifyResp.Allowed {
+		t.Fatalf("verify response = %#v, want allowed", verifyResp)
+	}
+	if verifyResp.Update != nil {
+		t.Fatalf("update info = %#v, want nil outside rollout", verifyResp.Update)
+	}
+}
+
+func TestVerifyOptionalUpdateRolloutStableForSameDevice(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	addDemoUpdateRelease(t, server, AppRelease{
+		ID:             "rel_demo_nax_150_rollout_stable",
+		Version:        "1.5.0",
+		BuildNumber:    10500,
+		DownloadURL:    "https://download.example.com/nax-desktop/1.5.0/setup.exe",
+		PackageSHA256:  "package-150-sha256",
+		RolloutPercent: 35,
+	})
+
+	activateResp := activateDemoLicense(t, server, "stable-rollout-install", map[string]any{})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+	first := verifyLicenseTokenForApp(t, server, DemoAppID, activateResp.LicenseToken, "stable-rollout-install", "1.4.2", nil)
+	second := verifyLicenseTokenForApp(t, server, DemoAppID, activateResp.LicenseToken, "stable-rollout-install", "1.4.2", nil)
+	if !first.Allowed || !second.Allowed {
+		t.Fatalf("verify responses = %#v / %#v, want allowed", first, second)
+	}
+	if (first.Update != nil) != (second.Update != nil) {
+		t.Fatalf("rollout update changed for same device: first=%#v second=%#v", first.Update, second.Update)
+	}
+	if first.Update != nil && first.Update.LatestVersion != "1.5.0" {
+		t.Fatalf("first update info = %#v, want 1.5.0", first.Update)
+	}
+}
+
 func TestBlockedAppVersionDeniesVerification(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
