@@ -341,8 +341,18 @@ func (c *Client) Heartbeat(ctx context.Context) error {
 		}
 		request.Integrity = &integrity
 	}
-	var resp map[string]any
-	return c.postJSON(ctx, "/heartbeat", request, &resp)
+	var resp struct {
+		OK      *bool  `json:"ok"`
+		Code    string `json:"code,omitempty"`
+		Message string `json:"message,omitempty"`
+	}
+	if err := c.postJSON(ctx, "/heartbeat", request, &resp); err != nil {
+		return err
+	}
+	if resp.OK != nil && !*resp.OK {
+		return &APIError{StatusCode: http.StatusOK, Code: resp.Code, Message: resp.Message}
+	}
+	return nil
 }
 
 func (c *Client) Deactivate(ctx context.Context) error {

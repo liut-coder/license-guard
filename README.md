@@ -213,6 +213,8 @@ The response explains the license, device, activation, release, capability polic
 
 The Go SDK also decodes the signed `capability_policy` returned by `/activate` and `/verify`. When a public key is configured, cached authorization only exposes the policy bundle after its Ed25519 signature verifies.
 
+For VisionFlow business integrity, the Go SDK exposes an `IntegrityHook` that can attach `business_manifest_sha256`, protected DB hashes, assets/workflow hashes, and `business_integrity_status` to activate, verify, and heartbeat calls. Heartbeat integrity denial is surfaced as an `APIError` instead of being treated as a successful heartbeat.
+
 ## Release Publish CLI
 
 `licenseguardctl` can register a release without manually copying artifact hashes:

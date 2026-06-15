@@ -240,10 +240,12 @@ business_integrity_errors
 
 - `/v1/activate` 和 `/v1/verify` 可接收并保存上述业务完整性字段。
 - `/v1/heartbeat` 支持可选 `integrity` 对象；未传 `integrity` 的旧心跳只更新时间，不触发业务完整性误判。
+- Go SDK 支持 `IntegrityHook`，可在 `activate`、`verify` 和启用 hook 的 `heartbeat` 中附加 VisionFlow 业务完整性摘要。
+- Go SDK 在 heartbeat 收到 `ok=false` / `INTEGRITY_FAILED` 时返回 `APIError`，避免客户端把完整性拒绝误当成心跳成功。
 - PostgreSQL `integrity_reports` 已增加业务 manifest、受保护 DB、assets、workflow 和业务完整性错误字段。
 - Release 已有明确的 `business_manifest_sha256`、`protected_db_schema_hash`、`protected_db_tables_hash`、`assets_manifest_sha256`、`workflow_manifest_sha256` 发布基线字段；旧 `resource_manifest_hash` 仅保留为兼容 fallback。
 - 当前已强判 `business_manifest_signature_valid=false`、`business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch`、`workflow_manifest_mismatch`、`business_integrity_status=failed|invalid|tampered`。
-- 验证：`go test ./internal/licensecore`。
+- 验证：`go test ./internal/licensecore`、`TestSDKBusinessIntegrityEndToEndWithServer`。
 
 客户端本地 SQLite 加密边界：
 
@@ -643,8 +645,8 @@ hash 字段缺失
 ### P0 验收
 
 - [x] `go test ./...` 通过。
-- [ ] Windows SDK `TestCachedAuthorizationAllowsSignedOfflineGrace` 通过。
-- [ ] `Activate` 成功后 token 可保存并重新读取。
+- [x] Windows SDK `TestCachedAuthorizationAllowsSignedOfflineGrace` 通过。
+- [x] `Activate` 成功后 token 可保存并重新读取。
 - [ ] 本地 token 被篡改后验签失败。
 - [ ] VisionFlow 能通过本地 `replace` import SDK 并编译。
 - [x] License Guard 后台存在 VisionFlow App、Release、License。
@@ -654,6 +656,7 @@ hash 字段缺失
 - [x] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
 - [x] 诊断 API 能解释一次 capability deny 的具体原因。
 - [x] verify/heartbeat 能接收并保存 VisionFlow 业务完整性字段。
+- [x] Go SDK 端到端 activate/verify/heartbeat 能携带业务完整性字段，Release hash 匹配时放行，不匹配时 verify/heartbeat 返回 `INTEGRITY_FAILED`。
 - [x] 业务 manifest 签名无效或 hash 不匹配时返回拒绝或风险事件。
 
 ### P1 验收
