@@ -179,7 +179,7 @@ updated_at
 - 新增 `capability_policies` 存储模型和 PostgreSQL 迁移。
 - 提供 `GET /admin/apps/{app_id}/capability-policies` 查看策略。
 - 提供 `PUT/PATCH /admin/apps/{app_id}/capability-policies` 批量 upsert 策略。
-- Admin UI SDK 工作台已提供“能力策略”页签，可查看/编辑当前 App policy、补齐 VisionFlow 默认策略并保存。
+- Admin UI SDK 工作台已提供“能力策略”页签，可查看/编辑当前 App policy、补齐 VisionFlow 默认策略、保存，并预览某个 license 对某个 capability 的最终决策。
 - `/v1/activate` 和 `/v1/verify` 返回签名的 `capability_policy` 决策包，客户端可用 `/v1/public-key` 返回的 Ed25519 公钥验签。
 - 提供 `POST /v1/capability/check`，按 license token 和 capability 返回服务端决策。
 - 未登记 capability 默认 `allowed=false`、`effective_mode=block`、`reason=unknown_capability`。
@@ -320,7 +320,7 @@ Entitlements:
 
 ### P1：能力策略可视化
 
-- [ ] Admin UI 增加 Capability Policy 页面。
+- [x] Admin UI 增加 Capability Policy 页面。
 
 页面能力：
 
@@ -345,7 +345,7 @@ Entitlements:
 生成 license key
 ```
 
-- [ ] Admin UI 增加策略预览。
+- [x] Admin UI 增加策略预览。
 
 输入：
 
@@ -770,7 +770,7 @@ hash 字段缺失
 - [x] Admin UI 可下载 VisionFlow 接入包。
 - [ ] 接入包不包含 SDK secret、私钥、admin token、生产 license key。
 - [x] Admin UI 可查看和编辑 VisionFlow capability policy。
-- [ ] Admin UI 可预览某个 license 对某个 capability 的最终结果。
+- [x] Admin UI 可预览某个 license 对某个 capability 的最终结果。
 - [x] Release 发布脚本能登记签名后 EXE hash 和安装包 hash。
 - [x] Release 能登记 VisionFlow `business_manifest_sha256`。
 - [x] Release schema/发布脚本能分别登记受保护 DB hash、assets hash、workflow hash。

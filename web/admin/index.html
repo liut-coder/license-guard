@@ -1997,6 +1997,9 @@
         if (action === "save-policies") {
           await saveCapabilityPolicies(id);
         }
+        if (action === "preview-policy") {
+          await previewCapabilityPolicy(id);
+        }
       });
 
       async function loadAll() {
@@ -2337,6 +2340,7 @@
           "add-policy-row": "plus",
           "save-policies": "save",
           "remove-policy-row": "trash-2",
+          "preview-policy": "search-check",
         };
         const icon = icons[action] || "circle";
         const appAttr = appID ? ` data-app-id="${escapeHTML(appID)}"` : "";
@@ -2375,7 +2379,7 @@
           install_id_path: "/tmp/license-guard-demo/install_id",
           token_cache_path: "/tmp/license-guard-demo/token.json",
         };
-        state.sdkContext = { app, appID, sdkKey, keys: appDetail.sdk_keys || [], releases, onboarding, params, capabilityPolicies };
+        state.sdkContext = { app, appID, sdkKey, keys: appDetail.sdk_keys || [], releases, licenses: appDetail.licenses || [], onboarding, params, capabilityPolicies };
         setSDKTab(state.sdkTab);
         renderSDKKeyPanel(appID, sdkKey, appDetail.sdk_keys || []);
         renderSDKOverview(state.sdkContext);
@@ -2519,10 +2523,27 @@
               <h3>策略边界</h3>
               <p><span class="strong">当前 App:</span> ${escapeHTML(ctx.appID)}</p>
               <p><span class="strong">策略数:</span> ${escapeHTML((ctx.capabilityPolicies || []).length)}</p>
-              <p><span class="strong">规则:</span> License entitlement 仍是硬边界，策略只能收紧或改变体验。</p>
-              <p><span class="strong">默认:</span> 未知 capability 按 block 处理。</p>
+              <h3>策略预览</h3>
+              <div class="field"><label>License</label><select id="policyPreviewLicense">${policyPreviewLicenseOptions(ctx.licenses || [])}</select></div>
+              <div class="field"><label>Device ID</label><input id="policyPreviewDevice" value="" /></div>
+              <div class="field"><label>App Version</label><input id="policyPreviewVersion" value="${escapeHTML(ctx.params.app_version || "")}" /></div>
+              <div class="field"><label>Capability</label><input id="policyPreviewCapability" value="${escapeHTML(firstPolicyCapability(ctx.capabilityPolicies) || "automation.run")}" /></div>
+              <div class="sdk-actions">${actionButton("预览结果", "preview-policy", ctx.appID)}</div>
+              <div id="policyPreviewResult" class="callout"><div class="strong">策略边界</div><div class="muted-line">License entitlement 仍是硬边界，策略只能收紧或改变体验。未知 capability 默认 block。</div></div>
             </div>
           </div>`;
+      }
+
+      function firstPolicyCapability(policies = []) {
+        return (policies.find((item) => item.capability) || {}).capability || "";
+      }
+
+      function policyPreviewLicenseOptions(licenses = []) {
+        const items = licenses.filter((item) => item.status !== "revoked");
+        if (!items.length) return `<option value="">当前 App 暂无 license</option>`;
+        return items
+          .map((item) => `<option value="${escapeHTML(item.id)}">${escapeHTML(item.license_key_prefix || item.id)}... · ${escapeHTML(item.status)} · ${escapeHTML((item.entitlements || []).join(","))}</option>`)
+          .join("");
       }
 
       function policyRowHTML(policy = {}) {
@@ -2582,6 +2603,42 @@
           document.getElementById("copyState").textContent = "能力策略已保存";
         } catch (error) {
           document.getElementById("copyState").textContent = `能力策略保存失败: ${error.message}`;
+        }
+      }
+
+      async function previewCapabilityPolicy(appID) {
+        const licenseID = document.getElementById("policyPreviewLicense")?.value || "";
+        const deviceID = document.getElementById("policyPreviewDevice")?.value.trim() || "";
+        const appVersion = document.getElementById("policyPreviewVersion")?.value.trim() || "";
+        const capability = document.getElementById("policyPreviewCapability")?.value.trim() || "";
+        const result = document.getElementById("policyPreviewResult");
+        if (!result) return;
+        if (!licenseID || !capability) {
+          result.innerHTML = `<div class="error-text">请选择 license 并输入 capability</div>`;
+          return;
+        }
+        try {
+          const query = new URLSearchParams({
+            license_id: licenseID,
+            platform: "windows",
+            app_version: appVersion,
+            capability,
+          });
+          if (deviceID) query.set("device_id", deviceID);
+          const data = await api(`/admin/apps/${encodeURIComponent(appID)}/diagnostics?${query.toString()}`);
+          const decision = data.capability_decision || {};
+          const allowed = Boolean(decision.allowed);
+          const policyLayer = data.capability_policy ? "App policy" : "默认拒绝";
+          result.innerHTML = `
+            <div class="strong">${allowed ? "允许" : "拒绝"} · ${escapeHTML(decision.effective_mode || "unknown")}</div>
+            <div class="muted-line">Capability: ${escapeHTML(decision.capability || capability)}</div>
+            <div class="muted-line">Configured: ${escapeHTML(decision.configured_mode || "none")} · Policy: ${escapeHTML(policyLayer)}</div>
+            <div class="muted-line">Entitlement: ${escapeHTML(decision.required_entitlement || "未配置")}</div>
+            <div class="muted-line">Reason: ${escapeHTML(decision.reason || "命中 entitlement")}</div>
+            <div class="muted-line">Message: ${escapeHTML(decision.message || data.capability_policy?.message || "")}</div>
+            <div class="muted-line">License: ${escapeHTML(data.license?.license_key_prefix || licenseID)}... · ${(data.license?.entitlements || []).map(escapeHTML).join(", ")}</div>`;
+        } catch (error) {
+          result.innerHTML = `<div class="error-text">策略预览失败: ${escapeHTML(error.message)}</div>`;
         }
       }
 
