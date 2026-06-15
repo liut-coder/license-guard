@@ -543,7 +543,25 @@ Public Key 指纹
 - `TestValidateProductionConfigRejectsWildcardCORS`
 - `TestValidateProductionConfigAcceptsProductionSettings`
 
-- [ ] 处理 demo admin：生产首次启动强制改密或生产模式禁用 demo seed。
+- [x] 处理 demo admin：生产首次启动强制改密或生产模式禁用 demo seed。
+
+已落地：
+
+- `licenseguard-migrate` 支持 `-production` / `LG_PRODUCTION=true`，生产模式会拒绝 `-seed-demo`。
+- `licenseguard-server` 生产模式通过 `NewServerWithStoreOptions` 禁用空 store 自动 demo seed。
+- 生产空库需要显式设置 `LG_BOOTSTRAP_ADMIN_ACCOUNT` / `LG_BOOTSTRAP_ADMIN_PASSWORD` 创建首个管理员；首次登录后应轮换密码并移除 bootstrap secret。
+- 生产启动日志不再输出 demo admin/app/license 提示，避免误导生产操作员继续使用 demo 凭据。
+- Docker Compose 和 systemd 迁移模板均传入 `-production=${LG_PRODUCTION}`。
+
+验证：
+
+- `TestValidateMigrationOptionsRejectsDemoSeedInProduction`
+- `TestNewServerWithStoreOptionsRejectsEmptyStoreWhenDemoSeedDisabled`
+- `TestNewServerWithStoreOptionsBootstrapsAdminWithoutDemoData`
+- `TestNewServerWithStoreOptionsRejectsLoadedStoreWithoutAdminsWhenDemoSeedDisabled`
+- `TestBootstrapAdminFromConfigRejectsDemoPasswordInProduction`
+- `TestBootstrapAdminFromConfigAcceptsProductionBootstrap`
+
 - [x] Admin 登录、challenge、activate、verify 增加限流或失败延迟。
 
 已落地：服务端维护内存失败窗口，默认同一来源/账号或同一来源/设备安装在 1 分钟内允许 5 次失败；超过后返回 HTTP 429 和 `RATE_LIMITED`。成功请求会清理对应失败计数。

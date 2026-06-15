@@ -31,7 +31,7 @@ bash scripts/production-check.sh
 - `DATABASE_URL` 使用 TLS，例如 `sslmode=require`，并通过部署平台 secret 注入。
 - 多副本生产环境先由发布流水线运行 `licenseguard-migrate`，再启动或滚动 API 实例。
 - `-auto-migrate` 只用于小型单节点或临时环境，不作为多副本生产默认方案。
-- `licenseguard-migrate -seed-demo` 仅用于本地或演示数据库，生产租户不得执行 demo seed。
+- `licenseguard-migrate -seed-demo` 仅用于本地或演示数据库；`LG_PRODUCTION=true` / `-production=true` 会拒绝生产执行 demo seed。
 - 数据库备份必须覆盖恢复演练，不只检查备份任务是否存在。
 
 ## 3. 签名密钥
@@ -47,7 +47,7 @@ bash scripts/production-check.sh
 - `LG_CORS_ALLOWED_ORIGINS` / `-cors-allowed-origins` 必须配置为具体 HTTPS Origin；生产模式会拒绝空值或 `*`。
 - 后台入口配置 IP 白名单、MFA 或等效访问控制。
 - Admin 登录、challenge、activate、verify 的失败限流必须开启并经过演练，连续失败应返回 `RATE_LIMITED`。
-- 首次生产启动后立即替换 demo 管理员凭据，确认默认密码不可登录。
+- 生产模式禁用自动 demo seed；空库首次启动必须使用 `LG_BOOTSTRAP_ADMIN_ACCOUNT` / `LG_BOOTSTRAP_ADMIN_PASSWORD` 显式创建管理员，首次登录后立即轮换密码并移除 bootstrap secret。
 - 敏感操作确认、审计保留天数、token TTL、offline grace、默认设备数和默认授权天数按租户策略配置。
 - 日志不得记录 `DATABASE_URL` 明文密码、license key 全量、SDK secret、私钥或 `secret_hash`。
 

@@ -24,10 +24,17 @@ func main() {
 	migrationsDir := flag.String("migrations-dir", "./migrations", "directory containing PostgreSQL migration SQL files")
 	corsAllowedOrigins := flag.String("cors-allowed-origins", envOrDefault("LG_CORS_ALLOWED_ORIGINS", "*"), "comma-separated CORS allowed origins; use concrete HTTPS origins in production")
 	production := flag.Bool("production", envBool("LG_PRODUCTION", false), "enforce production safety checks")
+	bootstrapAdminAccount := flag.String("bootstrap-admin-account", os.Getenv("LG_BOOTSTRAP_ADMIN_ACCOUNT"), "optional admin account to create when the store has no admins")
+	bootstrapAdminPassword := flag.String("bootstrap-admin-password", os.Getenv("LG_BOOTSTRAP_ADMIN_PASSWORD"), "optional admin password used only for first bootstrap")
+	bootstrapAdminName := flag.String("bootstrap-admin-name", envOrDefault("LG_BOOTSTRAP_ADMIN_NAME", "Bootstrap Admin"), "optional admin display name used only for first bootstrap")
 	flag.Parse()
 
 	if err := validateProductionConfig(*production, *storeMode, *keyDir, *corsAllowedOrigins); err != nil {
 		log.Fatalf("invalid production config: %s", err)
+	}
+	bootstrapAdmin, err := bootstrapAdminFromConfig(*production, *bootstrapAdminAccount, *bootstrapAdminPassword, *bootstrapAdminName)
+	if err != nil {
+		log.Fatalf("invalid bootstrap admin config: %s", err)
 	}
 
 	resolvedKeyDir := *keyDir
@@ -39,7 +46,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("init store: %s", redactLogMessage(err.Error()))
 	}
-	api, err := licensecore.NewServerWithStore(resolvedKeyDir, store)
+	api, err := licensecore.NewServerWithStoreOptions(resolvedKeyDir, store, licensecore.ServerOptions{
+		SeedDemoData:   !*production,
+		BootstrapAdmin: bootstrapAdmin,
+	})
 	if err != nil {
 		log.Fatalf("init license guard server: %s", redactLogMessage(err.Error()))
 	}
@@ -65,10 +75,14 @@ func main() {
 	log.Printf("License Guard API listening on http://%s", *addr)
 	log.Printf("License Guard Admin UI: http://%s/admin-ui/", *addr)
 	log.Printf("Storage backend: %s", store.Name())
-	log.Printf("Demo admin: %s / [redacted]", licensecore.DemoAdminAccount)
-	log.Printf("Demo app: %s", licensecore.DemoAppID)
-	log.Printf("Demo license prefix: %s", redactedPrefix(licensecore.DemoLicenseKey))
-	log.Printf("Demo integrity hash: %s", licensecore.DemoBinaryHash)
+	if *production {
+		log.Print("Production mode enabled: demo seed data is disabled for production migrations")
+	} else {
+		log.Printf("Demo admin: %s / [redacted]", licensecore.DemoAdminAccount)
+		log.Printf("Demo app: %s", licensecore.DemoAppID)
+		log.Printf("Demo license prefix: %s", redactedPrefix(licensecore.DemoLicenseKey))
+		log.Printf("Demo integrity hash: %s", licensecore.DemoBinaryHash)
+	}
 	log.Fatal(http.ListenAndServe(*addr, mux))
 }
 
@@ -104,6 +118,35 @@ func validateProductionConfig(production bool, storeMode string, keyDir string, 
 		return fmt.Errorf("production mode requires concrete -cors-allowed-origins, got empty or wildcard")
 	}
 	return nil
+}
+
+func bootstrapAdminFromConfig(production bool, account string, password string, name string) (*licensecore.BootstrapAdmin, error) {
+	account = strings.TrimSpace(account)
+	name = strings.TrimSpace(name)
+	hasBootstrapInput := account != "" || password != ""
+	if !hasBootstrapInput {
+		return nil, nil
+	}
+	if account == "" || password == "" {
+		return nil, fmt.Errorf("bootstrap admin requires both account and password")
+	}
+	if production {
+		if password == licensecore.DemoAdminPass {
+			return nil, fmt.Errorf("bootstrap admin password must not use the demo password")
+		}
+		if strings.Contains(strings.ToLower(password), "change-me") {
+			return nil, fmt.Errorf("bootstrap admin password must replace the change-me placeholder")
+		}
+		if len(password) < 12 {
+			return nil, fmt.Errorf("bootstrap admin password must be at least 12 characters in production")
+		}
+	}
+	return &licensecore.BootstrapAdmin{
+		ID:       "admin_bootstrap",
+		Account:  account,
+		Name:     name,
+		Password: password,
+	}, nil
 }
 
 func isPostgresStore(mode string) bool {

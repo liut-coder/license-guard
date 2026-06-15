@@ -46,6 +46,18 @@ type Server struct {
 	rateLimitFailures  int
 }
 
+type ServerOptions struct {
+	SeedDemoData   bool
+	BootstrapAdmin *BootstrapAdmin
+}
+
+type BootstrapAdmin struct {
+	ID       string
+	Account  string
+	Name     string
+	Password string
+}
+
 type AdminSession struct {
 	AdminID   string
 	ExpiresAt time.Time
@@ -68,6 +80,10 @@ func NewServer(dataDir string) (*Server, error) {
 }
 
 func NewServerWithStore(keyDir string, store Store) (*Server, error) {
+	return NewServerWithStoreOptions(keyDir, store, ServerOptions{SeedDemoData: true})
+}
+
+func NewServerWithStoreOptions(keyDir string, store Store, options ServerOptions) (*Server, error) {
 	if err := os.MkdirAll(keyDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -87,7 +103,7 @@ func NewServerWithStore(keyDir string, store Store) (*Server, error) {
 		rateLimitWindow:    time.Minute,
 		rateLimitFailures:  5,
 	}
-	if err := s.loadOrSeed(); err != nil {
+	if err := s.loadOrSeed(options); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -2410,17 +2426,31 @@ func (s *Server) findOrCreateDeviceLocked(input clientVerificationInput) *Device
 	return &s.data.Devices[len(s.data.Devices)-1]
 }
 
-func (s *Server) loadOrSeed() error {
+func (s *Server) loadOrSeed(options ServerOptions) error {
 	data, err := s.store.Load()
 	if err == nil {
 		s.data = data
-		return s.ensureLoadedDefaults()
+		return s.ensureLoadedDefaults(options)
 	}
 	if !errors.Is(err, ErrStoreNotFound) {
 		return err
 	}
 
 	now := time.Now()
+	if options.BootstrapAdmin != nil {
+		admin, err := newBootstrapAdmin(*options.BootstrapAdmin, now)
+		if err != nil {
+			return err
+		}
+		s.data = Data{
+			Settings: defaultSystemSettings(now),
+			Admins:   []Admin{admin},
+		}
+		return s.saveLocked()
+	}
+	if !options.SeedDemoData {
+		return errors.New("store is empty and demo seed is disabled; bootstrap a production admin before starting")
+	}
 	demoAdmin, err := newPasswordAdmin("admin_demo", DemoAdminAccount, "Demo Admin", DemoAdminPass, now)
 	if err != nil {
 		return err
@@ -2475,7 +2505,7 @@ func (s *Server) loadOrSeed() error {
 	return s.saveLocked()
 }
 
-func (s *Server) ensureLoadedDefaults() error {
+func (s *Server) ensureLoadedDefaults(options ServerOptions) error {
 	now := time.Now()
 	changed := false
 	settings := normalizeSystemSettings(s.data.Settings, now)
@@ -2505,6 +2535,17 @@ func (s *Server) ensureLoadedDefaults() error {
 		}
 		return nil
 	}
+	if options.BootstrapAdmin != nil {
+		admin, err := newBootstrapAdmin(*options.BootstrapAdmin, now)
+		if err != nil {
+			return err
+		}
+		s.data.Admins = append(s.data.Admins, admin)
+		return s.saveLocked()
+	}
+	if !options.SeedDemoData {
+		return errors.New("store has no admins and demo seed is disabled; bootstrap a production admin before starting")
+	}
 	admin, err := newPasswordAdmin("admin_demo", DemoAdminAccount, "Demo Admin", DemoAdminPass, now)
 	if err != nil {
 		return err
@@ -2515,6 +2556,25 @@ func (s *Server) ensureLoadedDefaults() error {
 		return nil
 	}
 	return s.saveLocked()
+}
+
+func newBootstrapAdmin(input BootstrapAdmin, now time.Time) (Admin, error) {
+	id := strings.TrimSpace(input.ID)
+	if id == "" {
+		id = "admin_bootstrap"
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		name = "Bootstrap Admin"
+	}
+	account := strings.TrimSpace(input.Account)
+	if account == "" {
+		return Admin{}, errors.New("bootstrap admin account is required")
+	}
+	if input.Password == "" {
+		return Admin{}, errors.New("bootstrap admin password is required")
+	}
+	return newPasswordAdmin(id, account, name, input.Password, now)
 }
 
 func newPasswordAdmin(id string, account string, name string, password string, now time.Time) (Admin, error) {

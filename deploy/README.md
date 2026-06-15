@@ -5,7 +5,7 @@ These templates are production-oriented starting points. Replace placeholders, w
 ## Docker Compose
 
 1. Copy `deploy/.env.example` to `deploy/.env`.
-2. Replace `POSTGRES_PASSWORD`, `DATABASE_URL`, `LICENSEGUARD_HTTP_PORT`, `LICENSEGUARD_PUBLIC_BASE_URL`, and `LG_CORS_ALLOWED_ORIGINS`. Keep `LG_PRODUCTION=true` for production deployments.
+2. Replace `POSTGRES_PASSWORD`, `DATABASE_URL`, `LICENSEGUARD_HTTP_PORT`, `LICENSEGUARD_PUBLIC_BASE_URL`, and `LG_CORS_ALLOWED_ORIGINS`. Keep `LG_PRODUCTION=true` for production deployments. If this is a new production database, set `LG_BOOTSTRAP_ADMIN_ACCOUNT` and `LG_BOOTSTRAP_ADMIN_PASSWORD` for first startup only.
 3. Start PostgreSQL, run migrations, then start the API:
 
 ```bash
@@ -18,7 +18,7 @@ The Compose template runs `licenseguard-migrate` once before the API and stores 
 
 `LG_CORS_ALLOWED_ORIGINS` should be a comma-separated list of concrete HTTPS origins that host the Admin UI or operator console, for example `https://licenseguard.example.com`. Use `*` only for local development.
 
-`LG_PRODUCTION=true` makes `licenseguard-server` fail fast unless it runs with PostgreSQL, an explicit persistent `-key-dir`, and concrete CORS origins.
+`LG_PRODUCTION=true` makes `licenseguard-server` fail fast unless it runs with PostgreSQL, an explicit persistent `-key-dir`, and concrete CORS origins. It also disables automatic demo seed data; an empty production database must already contain an admin or receive an explicit bootstrap admin through the `LG_BOOTSTRAP_ADMIN_*` variables.
 
 ## HTTPS Reverse Proxy
 
@@ -45,6 +45,6 @@ systemctl enable --now licenseguard.service
 
 - Run `bash scripts/production-check.sh` before cutting a deployable build.
 - Back up PostgreSQL and `/var/lib/licenseguard/keys` together.
-- Do not run `licenseguard-migrate -seed-demo` for production tenants.
-- Change the demo admin password immediately after first startup if demo seed data exists.
+- `licenseguard-migrate -seed-demo` is rejected when `LG_PRODUCTION=true`; use demo seed only for local or demo databases.
+- Remove `LG_BOOTSTRAP_ADMIN_PASSWORD` after first successful production login and rotate the bootstrap password through Admin UI.
 - Keep `DATABASE_URL`, signing private keys, SDK secrets, admin tokens, and license keys out of logs and client bundles.

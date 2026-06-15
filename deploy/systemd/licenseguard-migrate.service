@@ -9,4 +9,4 @@ User=licenseguard
 Group=licenseguard
 EnvironmentFile=/etc/licenseguard/licenseguard.env
 WorkingDirectory=/opt/licenseguard
-ExecStart=/usr/local/bin/licenseguard-migrate -database-url=${DATABASE_URL} -migrations-dir=/opt/licenseguard/migrations
+ExecStart=/usr/local/bin/licenseguard-migrate -database-url=${DATABASE_URL} -migrations-dir=/opt/licenseguard/migrations -production=${LG_PRODUCTION}

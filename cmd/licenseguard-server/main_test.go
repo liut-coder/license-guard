@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"license-guard/internal/licensecore"
 )
 
 func TestValidateProductionConfigAllowsDevelopmentDefaults(t *testing.T) {
@@ -52,6 +54,36 @@ func TestValidateProductionConfigAcceptsProductionSettings(t *testing.T) {
 				t.Fatalf("validateProductionConfig returned error: %v", err)
 			}
 		})
+	}
+}
+
+func TestBootstrapAdminFromConfigRejectsPartialInput(t *testing.T) {
+	_, err := bootstrapAdminFromConfig(true, "ops@example.com", "", "Ops")
+	requireErrorContains(t, err, "requires both account and password")
+}
+
+func TestBootstrapAdminFromConfigRejectsDemoPasswordInProduction(t *testing.T) {
+	_, err := bootstrapAdminFromConfig(true, "ops@example.com", licensecore.DemoAdminPass, "Ops")
+	requireErrorContains(t, err, "must not use the demo password")
+}
+
+func TestBootstrapAdminFromConfigRequiresStrongProductionPassword(t *testing.T) {
+	_, err := bootstrapAdminFromConfig(true, "ops@example.com", "shortpass", "Ops")
+	requireErrorContains(t, err, "at least 12 characters")
+}
+
+func TestBootstrapAdminFromConfigRejectsPlaceholderPasswordInProduction(t *testing.T) {
+	_, err := bootstrapAdminFromConfig(true, "ops@example.com", "change-me-bootstrap-password", "Ops")
+	requireErrorContains(t, err, "replace the change-me placeholder")
+}
+
+func TestBootstrapAdminFromConfigAcceptsProductionBootstrap(t *testing.T) {
+	admin, err := bootstrapAdminFromConfig(true, " ops@example.com ", "VeryStrong123!", "Ops")
+	if err != nil {
+		t.Fatalf("bootstrapAdminFromConfig returned error: %v", err)
+	}
+	if admin == nil || admin.Account != "ops@example.com" || admin.Name != "Ops" {
+		t.Fatalf("unexpected bootstrap admin: %#v", admin)
 	}
 }
 

@@ -79,6 +79,11 @@ require_text docs/04-production-readiness-checklist.md "DATABASE_URL" "productio
 require_text docs/04-production-readiness-checklist.md "signing-key\\.json" "signing key checklist"
 require_text docs/04-production-readiness-checklist.md "secret_hash" "SDK key leak checklist"
 require_text docs/04-production-readiness-checklist.md "seed-demo.*生产|生产.*seed-demo" "demo seed checklist"
+require_text deploy/docker-compose.yml "licenseguard-migrate" "compose migration service"
+require_text deploy/docker-compose.yml "-production=\\$\\{LG_PRODUCTION\\}" "compose migration production flag"
+require_text deploy/docker-compose.yml "LG_BOOTSTRAP_ADMIN_PASSWORD:[[:space:]]*\\$\\{LG_BOOTSTRAP_ADMIN_PASSWORD\\}" "compose bootstrap admin env"
+require_text deploy/systemd/licenseguard-migrate.service "-production=\\$\\{LG_PRODUCTION\\}" "systemd migration production flag"
+require_text deploy/.env.example "LG_BOOTSTRAP_ADMIN_PASSWORD" "compose bootstrap admin env"
 
 section "Migration chain"
 expected=(

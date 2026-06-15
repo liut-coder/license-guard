@@ -278,9 +278,10 @@ go run ./cmd/licenseguard-server \
 Notes:
 
 - `-key-dir` stores the Ed25519 signing key. Keep it persistent and backed up.
-- If PostgreSQL is empty, the server seeds the same demo admin/app/license used by JSON mode.
-- Demo admin credentials are stored as a bcrypt hash in the configured store after first startup.
-- `licenseguard-migrate -seed-demo` is intended for local/demo databases, not production tenants.
+- In development mode, an empty store seeds the demo admin/app/license used by the local quickstart.
+- In production mode, automatic demo seed is disabled. If the production store has no admins, set `LG_BOOTSTRAP_ADMIN_ACCOUNT` and `LG_BOOTSTRAP_ADMIN_PASSWORD` only for first startup, then rotate the password and remove the bootstrap secret.
+- Admin credentials are stored as bcrypt hashes in the configured store after first startup.
+- `licenseguard-migrate -seed-demo` is intended for local/demo databases. `LG_PRODUCTION=true` or `-production=true` makes the migration tool reject `-seed-demo`.
 
 ## API Surface
 
