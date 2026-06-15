@@ -613,6 +613,68 @@ func TestCapabilityPolicyDeniesMissingEntitlementAndSignsVerifyBundle(t *testing
 	}
 }
 
+func TestAuthorizationDiagnosticsExplainsCapabilityDeny(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+
+	upsertPayload := []byte(`{"items":[
+		{"capability":"premium.run","required_entitlement":"visionflow.premium","mode":"allow","message":"premium required"}
+	]}`)
+	req := httptest.NewRequest(http.MethodPut, "/admin/apps/"+DemoAppID+"/capability-policies", bytes.NewReader(upsertPayload))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("capability policy upsert status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	activateResp := activateDemoLicense(t, server, "diagnostic-capability-install", map[string]any{})
+	if !activateResp.Allowed || activateResp.LicenseToken == "" {
+		t.Fatalf("activate response = %#v, want allowed token", activateResp)
+	}
+	decision := capabilityCheck(t, server, activateResp.LicenseToken, "premium.run")
+	if decision.Allowed || decision.Reason != "missing_entitlement" {
+		t.Fatalf("capability decision = %#v, want missing entitlement denial", decision)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/apps/"+DemoAppID+"/diagnostics?license_id=lic_demo_windows&platform=windows&app_version=1.4.2&capability=premium.run", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("diagnostics status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var diag AuthorizationDiagnosticResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &diag); err != nil {
+		t.Fatalf("decode diagnostics response: %v", err)
+	}
+	if diag.License == nil || diag.License.ID != "lic_demo_windows" {
+		t.Fatalf("diagnostic license = %#v, want demo license", diag.License)
+	}
+	if diag.Device == nil || diag.Activation == nil || diag.Activation.ActivationStatus != "active" {
+		t.Fatalf("diagnostic device/activation = %#v / %#v, want inferred active activation", diag.Device, diag.Activation)
+	}
+	if diag.Release == nil || diag.Release.Version != "1.4.2" {
+		t.Fatalf("diagnostic release = %#v, want 1.4.2", diag.Release)
+	}
+	if diag.CapabilityDecision == nil || diag.CapabilityDecision.Allowed || diag.CapabilityDecision.Reason != "missing_entitlement" || diag.CapabilityDecision.EffectiveMode != "block" {
+		t.Fatalf("diagnostic capability decision = %#v, want missing entitlement block", diag.CapabilityDecision)
+	}
+	if diag.LatestCapabilityDeny == nil || diag.LatestCapabilityDeny.EventType != "capability_denied" {
+		t.Fatalf("latest capability deny = %#v, want capability_denied", diag.LatestCapabilityDeny)
+	}
+	if !hasFinding(diag.Findings, "policy", "missing_entitlement") || !hasFinding(diag.Findings, "risk", "latest_capability_deny") {
+		t.Fatalf("diagnostic findings missing policy/risk evidence: %#v", diag.Findings)
+	}
+	if diag.LatestIntegrityReport == nil {
+		t.Fatalf("diagnostics did not include latest integrity report")
+	}
+}
+
 func TestRotateSDKKeyReturnsSecretOnceAndWritesAuditLog(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -959,6 +1021,15 @@ func hasCapabilityPolicy(items []CapabilityPolicy, capability string, entitlemen
 func hasDecision(items []CapabilityDecision, capability string, allowed bool, effectiveMode string, reason string) bool {
 	for _, item := range items {
 		if item.Capability == capability && item.Allowed == allowed && item.EffectiveMode == effectiveMode && item.Reason == reason {
+			return true
+		}
+	}
+	return false
+}
+
+func hasFinding(items []DiagnosticFinding, scope string, code string) bool {
+	for _, item := range items {
+		if item.Scope == scope && item.Code == code {
 			return true
 		}
 	}

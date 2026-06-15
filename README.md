@@ -201,6 +201,16 @@ LICENSE_GUARD_SIGNER_THUMBPRINT
 VISIONFLOW_LICENSE_KEY
 ```
 
+## Authorization Diagnostics API
+
+Admins can inspect a VisionFlow authorization decision with:
+
+```text
+GET /admin/apps/{app_id}/diagnostics?license_id=...&device_id=...&app_version=...&capability=...
+```
+
+The response explains the license, device, activation, release, capability policy, latest integrity report, latest risk event, and the latest `capability_denied` reason when present.
+
 ## Release Publish CLI
 
 `licenseguardctl` can register a release without manually copying artifact hashes:

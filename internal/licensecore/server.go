@@ -443,6 +443,11 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 		return
 	}
 
+	if len(parts) == 2 && parts[1] == "diagnostics" && r.Method == http.MethodGet {
+		s.handleAppDiagnostics(w, r, appID)
+		return
+	}
+
 	if len(parts) == 3 && parts[1] == "capability-policies" && parts[2] == "visionflow-defaults" && r.Method == http.MethodPost {
 		s.handleVisionFlowCapabilityDefaults(w, r, appID, adminID)
 		return
@@ -712,6 +717,32 @@ func (s *Server) handleIntegrationBundle(w http.ResponseWriter, r *http.Request,
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+func (s *Server) handleAppDiagnostics(w http.ResponseWriter, r *http.Request, appID string) {
+	query := r.URL.Query()
+	input := authorizationDiagnosticInput{
+		AppID:      appID,
+		LicenseID:  strings.TrimSpace(query.Get("license_id")),
+		LicenseKey: strings.TrimSpace(query.Get("license_key")),
+		DeviceID:   strings.TrimSpace(query.Get("device_id")),
+		InstallID:  strings.TrimSpace(query.Get("install_id")),
+		Platform:   strings.TrimSpace(query.Get("platform")),
+		AppVersion: strings.TrimSpace(query.Get("app_version")),
+		Capability: strings.TrimSpace(query.Get("capability")),
+	}
+	if input.Platform == "" {
+		input.Platform = "windows"
+	}
+
+	s.mu.Lock()
+	response, ok := s.authorizationDiagnosticLocked(input)
+	s.mu.Unlock()
+	if !ok {
+		writeError(w, http.StatusNotFound, "APP_NOT_FOUND", "app not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) handleSDKKeyRotate(w http.ResponseWriter, r *http.Request, appID string, adminID string) {
@@ -1283,6 +1314,14 @@ func (s *Server) handleCapabilityCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	policy := s.findCapabilityPolicyLocked(claims.AppID, req.Capability)
 	decision := capabilityDecision(policy, lic.Entitlements, req.Capability)
+	if !decision.Allowed {
+		s.addCapabilityDenyRiskEventLocked(claims.AppID, claims.DeviceID, claims.LicenseID, decision)
+		if err := s.saveLocked(); err != nil {
+			s.mu.Unlock()
+			writeError(w, http.StatusInternalServerError, "SAVE_FAILED", err.Error())
+			return
+		}
+	}
 	s.mu.Unlock()
 
 	writeJSON(w, http.StatusOK, map[string]any{"decision": decision})
@@ -1352,6 +1391,17 @@ type clientVerificationInput struct {
 	Device       DeviceInfo
 	Integrity    IntegrityRequest
 	IsActivation bool
+}
+
+type authorizationDiagnosticInput struct {
+	AppID      string
+	LicenseID  string
+	LicenseKey string
+	DeviceID   string
+	InstallID  string
+	Platform   string
+	AppVersion string
+	Capability string
 }
 
 func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Request, input clientVerificationInput) {
@@ -1654,6 +1704,177 @@ func integrityRequestHasEvidence(integrity IntegrityRequest) bool {
 		integrity.DebuggerDetected ||
 		len(integrity.SuspiciousModules) > 0 ||
 		len(integrity.VMIndicators) > 0
+}
+
+func (s *Server) authorizationDiagnosticLocked(input authorizationDiagnosticInput) (AuthorizationDiagnosticResponse, bool) {
+	now := time.Now()
+	response := AuthorizationDiagnosticResponse{
+		AppID:       input.AppID,
+		Findings:    []DiagnosticFinding{},
+		GeneratedAt: now,
+	}
+	app := s.findAppLocked(input.AppID)
+	if app == nil {
+		return response, false
+	}
+	appCopy := *app
+	response.App = &appCopy
+	if app.Status == "active" {
+		response.Findings = append(response.Findings, diagnosticFinding("app", "ok", "app_active", "应用处于 active 状态", nil))
+	} else {
+		response.Findings = append(response.Findings, diagnosticFinding("app", "blocked", "app_not_active", "应用未处于 active 状态", map[string]any{"status": app.Status}))
+	}
+
+	license := s.findDiagnosticLicenseLocked(input)
+	if license == nil {
+		code := "license_not_provided"
+		message := "未提供 license_id 或 license_key"
+		if input.LicenseID != "" || input.LicenseKey != "" {
+			code = "license_not_found"
+			message = "未找到匹配的 License"
+		}
+		response.Findings = append(response.Findings, diagnosticFinding("license", "missing", code, message, nil))
+	} else {
+		licenseCopy := *license
+		response.License = &licenseCopy
+		switch {
+		case license.AppID != input.AppID:
+			response.Findings = append(response.Findings, diagnosticFinding("license", "blocked", "license_app_mismatch", "License 不属于当前应用", map[string]any{"license_app_id": license.AppID}))
+		case license.Status != "active":
+			response.Findings = append(response.Findings, diagnosticFinding("license", "blocked", "license_not_active", "License 未处于 active 状态", map[string]any{"status": license.Status}))
+		case now.After(license.ExpiresAt):
+			response.Findings = append(response.Findings, diagnosticFinding("license", "blocked", "license_expired", "License 已过期", map[string]any{"expires_at": license.ExpiresAt}))
+		default:
+			response.Findings = append(response.Findings, diagnosticFinding("license", "ok", "license_active", "License 可用", map[string]any{"entitlements": license.Entitlements}))
+		}
+	}
+
+	device := s.findDiagnosticDeviceLocked(input, license)
+	activation := (*Activation)(nil)
+	if license != nil && device != nil {
+		activation = s.findActivationLocked(license.ID, device.ID)
+	}
+	if activation == nil && license != nil {
+		activation = s.latestActivationForLicenseLocked(license.ID)
+		if activation != nil && device == nil {
+			device = s.findDeviceByIDLocked(activation.DeviceID)
+		}
+	}
+	if device == nil {
+		status := "missing"
+		code := "device_not_provided"
+		message := "未提供 device_id 或 install_id，且无法从 License 激活记录推断设备"
+		if input.DeviceID != "" || input.InstallID != "" {
+			code = "device_not_found"
+			message = "未找到匹配设备"
+		}
+		response.Findings = append(response.Findings, diagnosticFinding("device", status, code, message, nil))
+	} else {
+		deviceCopy := *device
+		response.Device = &deviceCopy
+		if device.Status == "active" {
+			response.Findings = append(response.Findings, diagnosticFinding("device", "ok", "device_active", "设备处于 active 状态", map[string]any{"risk_score": device.RiskScore}))
+		} else {
+			response.Findings = append(response.Findings, diagnosticFinding("device", "blocked", "device_not_active", "设备未处于 active 状态", map[string]any{"status": device.Status, "risk_score": device.RiskScore}))
+		}
+	}
+	if activation == nil {
+		response.Findings = append(response.Findings, diagnosticFinding("activation", "missing", "activation_not_found", "未找到当前 License 与设备的激活记录", nil))
+	} else {
+		activationCopy := *activation
+		response.Activation = &activationCopy
+		if activation.ActivationStatus == "active" {
+			response.Findings = append(response.Findings, diagnosticFinding("activation", "ok", "activation_active", "激活记录处于 active 状态", map[string]any{"last_verified_at": activation.LastVerifiedAt}))
+		} else {
+			response.Findings = append(response.Findings, diagnosticFinding("activation", "blocked", "activation_not_active", "激活记录未处于 active 状态", map[string]any{"status": activation.ActivationStatus}))
+		}
+	}
+
+	latestReport := s.latestIntegrityReportForDiagnosticLocked(input.AppID, device)
+	response.LatestIntegrityReport = latestReport
+	release := s.findDiagnosticReleaseLocked(input, latestReport)
+	if release == nil {
+		code := "release_not_found"
+		message := "未找到匹配 Release"
+		if input.AppVersion == "" {
+			code = "release_not_provided"
+			message = "未提供 app_version，且没有可推断的 Release"
+		}
+		response.Findings = append(response.Findings, diagnosticFinding("release", "missing", code, message, nil))
+	} else {
+		releaseCopy := *release
+		response.Release = &releaseCopy
+		switch release.Status {
+		case "active":
+			response.Findings = append(response.Findings, diagnosticFinding("release", "ok", "release_active", "Release 处于 active 状态", releaseEvidence(&releaseCopy)))
+		case "blocked":
+			response.Findings = append(response.Findings, diagnosticFinding("release", "blocked", "release_blocked", "Release 已被阻止", releaseEvidence(&releaseCopy)))
+		case "deprecated":
+			response.Findings = append(response.Findings, diagnosticFinding("release", "warning", "release_deprecated", "Release 已标记过时", releaseEvidence(&releaseCopy)))
+		default:
+			response.Findings = append(response.Findings, diagnosticFinding("release", "warning", "release_status_unknown", "Release 状态需要复核", releaseEvidence(&releaseCopy)))
+		}
+	}
+
+	if input.Capability != "" {
+		policy := s.findCapabilityPolicyLocked(input.AppID, input.Capability)
+		if policy != nil {
+			policyCopy := *policy
+			response.CapabilityPolicy = &policyCopy
+		}
+		entitlements := []string{}
+		if license != nil {
+			entitlements = license.Entitlements
+		}
+		decision := capabilityDecision(policy, entitlements, input.Capability)
+		response.CapabilityDecision = &decision
+		if decision.Allowed {
+			response.Findings = append(response.Findings, diagnosticFinding("policy", "ok", "capability_allowed", "Capability 已被当前 License entitlement 覆盖", map[string]any{"capability": decision.Capability, "effective_mode": decision.EffectiveMode}))
+		} else {
+			response.Findings = append(response.Findings, diagnosticFinding("policy", "blocked", decision.Reason, "Capability 未被当前 License 放行", map[string]any{
+				"capability":           decision.Capability,
+				"required_entitlement": decision.RequiredEntitlement,
+				"configured_mode":      decision.ConfiguredMode,
+				"effective_mode":       decision.EffectiveMode,
+			}))
+		}
+	}
+
+	licenseID := ""
+	deviceID := ""
+	if license != nil {
+		licenseID = license.ID
+	}
+	if device != nil {
+		deviceID = device.ID
+	}
+	response.LatestRiskEvent = s.latestRiskEventForDiagnosticLocked(input.AppID, licenseID, deviceID, "", "")
+	response.LatestCapabilityDeny = s.latestRiskEventForDiagnosticLocked(input.AppID, licenseID, deviceID, "capability_denied", input.Capability)
+	if response.LatestCapabilityDeny != nil {
+		response.Findings = append(response.Findings, diagnosticFinding("risk", "warning", "latest_capability_deny", "找到最近一次 capability 拒绝记录", riskEvidence(response.LatestCapabilityDeny)))
+	} else if input.Capability != "" {
+		response.Findings = append(response.Findings, diagnosticFinding("risk", "ok", "no_capability_deny", "未找到当前 capability 的拒绝风险记录", nil))
+	}
+	if latestReport != nil {
+		response.Findings = append(response.Findings, diagnosticFinding("integrity", "ok", "latest_integrity_report_found", "找到最近一次完整性上报", integrityEvidence(latestReport)))
+	} else {
+		response.Findings = append(response.Findings, diagnosticFinding("integrity", "missing", "integrity_report_not_found", "未找到完整性上报", nil))
+	}
+
+	if input.AppVersion != "" {
+		response.Update = s.updateInfoLocked(input.AppID, input.Platform, input.AppVersion, deviceID)
+	}
+	return response, true
+}
+
+func diagnosticFinding(scope string, status string, code string, message string, evidence map[string]any) DiagnosticFinding {
+	return DiagnosticFinding{
+		Scope:    scope,
+		Status:   status,
+		Code:     code,
+		Message:  message,
+		Evidence: evidence,
+	}
 }
 
 func normalizeCapabilityPolicy(appID string, item CapabilityPolicy, now time.Time) (CapabilityPolicy, error) {
@@ -2344,6 +2565,27 @@ func (s *Server) latestIntegrityReportForAppLocked(appID string) *IntegrityRepor
 	return &copy
 }
 
+func (s *Server) latestIntegrityReportForDiagnosticLocked(appID string, device *Device) *IntegrityReport {
+	if device == nil {
+		return s.latestIntegrityReportForAppLocked(appID)
+	}
+	var latest *IntegrityReport
+	for i := range s.data.IntegrityReports {
+		report := &s.data.IntegrityReports[i]
+		if report.AppID != appID || report.DeviceID != device.ID {
+			continue
+		}
+		if latest == nil || report.CreatedAt.After(latest.CreatedAt) {
+			latest = report
+		}
+	}
+	if latest == nil {
+		return nil
+	}
+	copy := *latest
+	return &copy
+}
+
 func (s *Server) latestRiskEventForAppLocked(appID string) *RiskEvent {
 	var latest *RiskEvent
 	for i := range s.data.RiskEvents {
@@ -2360,6 +2602,44 @@ func (s *Server) latestRiskEventForAppLocked(appID string) *RiskEvent {
 	}
 	copy := *latest
 	return &copy
+}
+
+func (s *Server) latestRiskEventForDiagnosticLocked(appID string, licenseID string, deviceID string, eventType string, capability string) *RiskEvent {
+	var latest *RiskEvent
+	for i := range s.data.RiskEvents {
+		event := &s.data.RiskEvents[i]
+		if event.AppID != appID {
+			continue
+		}
+		if licenseID != "" && event.LicenseID != licenseID {
+			continue
+		}
+		if deviceID != "" && event.DeviceID != deviceID {
+			continue
+		}
+		if eventType != "" && event.EventType != eventType {
+			continue
+		}
+		if capability != "" && metadataString(event.Metadata, "capability") != capability {
+			continue
+		}
+		if latest == nil || event.CreatedAt.After(latest.CreatedAt) {
+			latest = event
+		}
+	}
+	if latest == nil {
+		return nil
+	}
+	copy := *latest
+	return &copy
+}
+
+func metadataString(metadata map[string]any, key string) string {
+	if metadata == nil {
+		return ""
+	}
+	value, _ := metadata[key].(string)
+	return value
 }
 
 func (s *Server) hasActivationForAppLocked(appID string) bool {
@@ -2405,6 +2685,16 @@ func (s *Server) findLicenseByIDLocked(id string) *License {
 	return nil
 }
 
+func (s *Server) findDiagnosticLicenseLocked(input authorizationDiagnosticInput) *License {
+	if input.LicenseID != "" {
+		return s.findLicenseByIDLocked(input.LicenseID)
+	}
+	if input.LicenseKey != "" {
+		return s.findLicenseByKeyLocked(input.LicenseKey)
+	}
+	return nil
+}
+
 func (s *Server) activeSDKKeyForAppLocked(appID string) *SDKKey {
 	for i := range s.data.SDKKeys {
 		if s.data.SDKKeys[i].AppID == appID && s.data.SDKKeys[i].Status == "active" {
@@ -2432,6 +2722,32 @@ func (s *Server) findDeviceByIDLocked(id string) *Device {
 	return nil
 }
 
+func (s *Server) findDeviceByInstallHashLocked(installIDHash string) *Device {
+	for i := range s.data.Devices {
+		if s.data.Devices[i].InstallIDHash == installIDHash {
+			return &s.data.Devices[i]
+		}
+	}
+	return nil
+}
+
+func (s *Server) findDiagnosticDeviceLocked(input authorizationDiagnosticInput, license *License) *Device {
+	if input.DeviceID != "" {
+		return s.findDeviceByIDLocked(input.DeviceID)
+	}
+	if input.InstallID != "" {
+		return s.findDeviceByInstallHashLocked(hashString(input.InstallID))
+	}
+	if license == nil {
+		return nil
+	}
+	activation := s.latestActivationForLicenseLocked(license.ID)
+	if activation == nil {
+		return nil
+	}
+	return s.findDeviceByIDLocked(activation.DeviceID)
+}
+
 func (s *Server) findActivationLocked(licenseID string, deviceID string) *Activation {
 	for i := range s.data.Activations {
 		if s.data.Activations[i].LicenseID == licenseID && s.data.Activations[i].DeviceID == deviceID {
@@ -2439,6 +2755,20 @@ func (s *Server) findActivationLocked(licenseID string, deviceID string) *Activa
 		}
 	}
 	return nil
+}
+
+func (s *Server) latestActivationForLicenseLocked(licenseID string) *Activation {
+	var latest *Activation
+	for i := range s.data.Activations {
+		activation := &s.data.Activations[i]
+		if activation.LicenseID != licenseID {
+			continue
+		}
+		if latest == nil || activation.LastVerifiedAt.After(latest.LastVerifiedAt) {
+			latest = activation
+		}
+	}
+	return latest
 }
 
 func (s *Server) activeDeviceCountLocked(licenseID string) int {
@@ -2475,6 +2805,16 @@ func (s *Server) findReleaseByIDLocked(appID string, releaseID string) *AppRelea
 		}
 	}
 	return nil
+}
+
+func (s *Server) findDiagnosticReleaseLocked(input authorizationDiagnosticInput, report *IntegrityReport) *AppRelease {
+	if input.AppVersion != "" {
+		return s.findReleaseLocked(input.AppID, input.Platform, input.AppVersion)
+	}
+	if report != nil && report.ReleaseID != "" {
+		return s.findReleaseByIDLocked(input.AppID, report.ReleaseID)
+	}
+	return s.latestReleaseLocked(input.AppID, input.Platform)
 }
 
 func (s *Server) findRiskEventByIDLocked(id string) *RiskEvent {
@@ -2970,6 +3310,24 @@ func (s *Server) addRiskEventLocked(appID string, deviceID string, licenseID str
 		Summary:   summary,
 		Metadata:  metadata,
 		CreatedAt: time.Now(),
+	})
+}
+
+func (s *Server) addCapabilityDenyRiskEventLocked(appID string, deviceID string, licenseID string, decision CapabilityDecision) {
+	severity := "medium"
+	if decision.EffectiveMode == "warn" || decision.EffectiveMode == "watermark" || decision.EffectiveMode == "degrade" {
+		severity = "low"
+	}
+	action := decision.EffectiveMode
+	if action == "" {
+		action = "deny"
+	}
+	s.addRiskEventLocked(appID, deviceID, licenseID, "capability_denied", severity, action, "能力授权被拒绝", map[string]any{
+		"capability":           decision.Capability,
+		"required_entitlement": decision.RequiredEntitlement,
+		"configured_mode":      decision.ConfiguredMode,
+		"effective_mode":       decision.EffectiveMode,
+		"reason":               decision.Reason,
 	})
 }
 

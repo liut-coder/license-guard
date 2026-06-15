@@ -308,6 +308,31 @@ type OnboardingResponse struct {
 	GeneratedAt           time.Time        `json:"generated_at"`
 }
 
+type DiagnosticFinding struct {
+	Scope    string         `json:"scope"`
+	Status   string         `json:"status"`
+	Code     string         `json:"code"`
+	Message  string         `json:"message"`
+	Evidence map[string]any `json:"evidence,omitempty"`
+}
+
+type AuthorizationDiagnosticResponse struct {
+	AppID                 string              `json:"app_id"`
+	App                   *App                `json:"app,omitempty"`
+	License               *License            `json:"license,omitempty"`
+	Device                *Device             `json:"device,omitempty"`
+	Activation            *Activation         `json:"activation,omitempty"`
+	Release               *AppRelease         `json:"release,omitempty"`
+	CapabilityPolicy      *CapabilityPolicy   `json:"capability_policy,omitempty"`
+	CapabilityDecision    *CapabilityDecision `json:"capability_decision,omitempty"`
+	LatestIntegrityReport *IntegrityReport    `json:"latest_integrity_report,omitempty"`
+	LatestRiskEvent       *RiskEvent          `json:"latest_risk_event,omitempty"`
+	LatestCapabilityDeny  *RiskEvent          `json:"latest_capability_deny,omitempty"`
+	Update                *UpdateInfo         `json:"update,omitempty"`
+	Findings              []DiagnosticFinding `json:"findings"`
+	GeneratedAt           time.Time           `json:"generated_at"`
+}
+
 type LicenseTokenClaims struct {
 	Iss               string   `json:"iss"`
 	AppID             string   `json:"app_id"`

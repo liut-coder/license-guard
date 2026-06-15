@@ -7,7 +7,7 @@
 
 ## 0. 当前版本基线
 
-- 当前阶段：License Guard 已具备服务端、Admin UI、PostgreSQL 迁移、Windows Go SDK、demo、smoke、部署模板、集成包、Release 发布 CLI、VisionFlow 业务完整性摘要上报和 Capability Policy 服务端模型；VisionFlow 授权链路已能本地联调，但策略可视化和授权诊断仍需继续产品化。
+- 当前阶段：License Guard 已具备服务端、Admin UI、PostgreSQL 迁移、Windows Go SDK、demo、smoke、部署模板、集成包、Release 发布 CLI、VisionFlow 业务完整性摘要上报、Capability Policy 服务端模型和授权诊断 API；VisionFlow 授权链路已能本地联调，但策略可视化仍需继续产品化。
 - 当前目标：将 License Guard 从“授权 API + SDK”升级为 VisionFlow 的授权产品化控制中心，覆盖一键试用、能力策略、可视化配置、Release 自动化、授权诊断和生产安全基线。
 - 分支策略：用户确认 `license-guard` 使用 `main`。
 - 接入约束：不追求完全零配置；客户端至少需要可信的 Endpoint、App ID、Public Key 和 license 激活入口。
@@ -185,7 +185,7 @@ updated_at
 - license 缺少 `required_entitlement` 时，即使策略配置 `mode=allow`，最终 `effective_mode` 也会收敛为 `block`。
 - 验证：`TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies`、`TestCapabilityPolicyDeniesMissingEntitlementAndSignsVerifyBundle`。
 
-- [ ] 增加授权诊断支撑 API。
+- [x] 增加授权诊断支撑 API。
 
 诊断至少能解释：
 
@@ -198,6 +198,15 @@ policy 命中结果
 最近一次 verify / heartbeat
 最近一次 capability deny 原因
 ```
+
+已落地：
+
+- 提供 `GET /admin/apps/{app_id}/diagnostics`。
+- 支持查询参数：`license_id`、`license_key`、`device_id`、`install_id`、`platform`、`app_version`、`capability`。
+- 返回 App、License、Device、Activation、Release、Capability Policy、Capability Decision、最近完整性报告、最近风险事件、最近 capability 拒绝事件和结构化 findings。
+- 只提供 License 时，会从该 License 最近一次激活推断设备和 activation。
+- `POST /v1/capability/check` 在拒绝 capability 时记录 `capability_denied` 风险事件，诊断 API 可解释最近一次拒绝原因。
+- 验证：`TestAuthorizationDiagnosticsExplainsCapabilityDeny`。
 
 - [x] 扩展 VisionFlow integrity report 字段。
 
@@ -620,7 +629,7 @@ hash 字段缺失
 - [x] `licenseguardctl visionflow bootstrap` 一条命令能生成 VisionFlow 可用本地试用配置。
 - [x] 默认 VisionFlow capability policy 存在，且未知 capability 不会被默认放行。
 - [x] license 缺少 entitlement 时，即使 policy 配置为宽松模式也不能放行。
-- [ ] 诊断 API 能解释一次 capability deny 的具体原因。
+- [x] 诊断 API 能解释一次 capability deny 的具体原因。
 - [x] verify/heartbeat 能接收并保存 VisionFlow 业务完整性字段。
 - [x] 业务 manifest 签名无效或 hash 不匹配时返回拒绝或风险事件。
 
