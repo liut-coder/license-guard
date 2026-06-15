@@ -459,7 +459,10 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 	}
 
 	if len(parts) == 2 && parts[1] == "releases" && r.Method == http.MethodPost {
-		var req AppRelease
+		var req struct {
+			AppRelease
+			ValidateIntegrityFields bool `json:"validate_integrity_fields"`
+		}
 		if !decodeJSON(w, r, &req) {
 			return
 		}
@@ -480,6 +483,13 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 		}
 		req.RolloutPercent = clampPercent(req.RolloutPercent)
 		req.CreatedAt = time.Now()
+		release := req.AppRelease
+		if req.ValidateIntegrityFields {
+			if missing := missingReleaseIntegrityFields(release); len(missing) > 0 {
+				writeError(w, http.StatusBadRequest, "RELEASE_FIELDS_MISSING", "missing release fields: "+strings.Join(missing, ", "))
+				return
+			}
+		}
 
 		s.mu.Lock()
 		if s.findAppLocked(appID) == nil {
@@ -487,35 +497,36 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 			writeError(w, http.StatusNotFound, "APP_NOT_FOUND", "app not found")
 			return
 		}
-		s.data.Releases = append(s.data.Releases, req)
-		s.auditLocked(adminID, "release.create", "app", appID, r, map[string]any{"version": req.Version})
+		s.data.Releases = append(s.data.Releases, release)
+		s.auditLocked(adminID, "release.create", "app", appID, r, map[string]any{"version": release.Version})
 		err := s.saveLocked()
 		s.mu.Unlock()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "SAVE_FAILED", err.Error())
 			return
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{"release": req})
+		writeJSON(w, http.StatusCreated, map[string]any{"release": release})
 		return
 	}
 
 	if len(parts) == 3 && parts[1] == "releases" && r.Method == http.MethodPatch {
 		var req struct {
-			Status                 *string `json:"status"`
-			Mandatory              *bool   `json:"mandatory"`
-			RolloutPercent         *int    `json:"rollout_percent"`
-			DownloadURL            *string `json:"download_url"`
-			PackageSHA256          *string `json:"package_sha256"`
-			ReleaseNotes           *string `json:"release_notes"`
-			SignerThumbprint       *string `json:"signer_thumbprint"`
-			MainBinaryHash         *string `json:"main_binary_hash"`
-			MinSupportedVersion    *string `json:"min_supported_version"`
-			ResourceManifestHash   *string `json:"resource_manifest_hash"`
-			BusinessManifestSHA256 *string `json:"business_manifest_sha256"`
-			ProtectedDBSchemaHash  *string `json:"protected_db_schema_hash"`
-			ProtectedDBTablesHash  *string `json:"protected_db_tables_hash"`
-			AssetsManifestSHA256   *string `json:"assets_manifest_sha256"`
-			WorkflowManifestSHA256 *string `json:"workflow_manifest_sha256"`
+			Status                  *string `json:"status"`
+			Mandatory               *bool   `json:"mandatory"`
+			RolloutPercent          *int    `json:"rollout_percent"`
+			DownloadURL             *string `json:"download_url"`
+			PackageSHA256           *string `json:"package_sha256"`
+			ReleaseNotes            *string `json:"release_notes"`
+			SignerThumbprint        *string `json:"signer_thumbprint"`
+			MainBinaryHash          *string `json:"main_binary_hash"`
+			MinSupportedVersion     *string `json:"min_supported_version"`
+			ResourceManifestHash    *string `json:"resource_manifest_hash"`
+			BusinessManifestSHA256  *string `json:"business_manifest_sha256"`
+			ProtectedDBSchemaHash   *string `json:"protected_db_schema_hash"`
+			ProtectedDBTablesHash   *string `json:"protected_db_tables_hash"`
+			AssetsManifestSHA256    *string `json:"assets_manifest_sha256"`
+			WorkflowManifestSHA256  *string `json:"workflow_manifest_sha256"`
+			ValidateIntegrityFields *bool   `json:"validate_integrity_fields"`
 		}
 		if !decodeJSON(w, r, &req) {
 			return
@@ -529,60 +540,69 @@ func (s *Server) handleAppDetail(w http.ResponseWriter, r *http.Request, tail st
 			writeError(w, http.StatusNotFound, "RELEASE_NOT_FOUND", "release not found")
 			return
 		}
+		updated := *release
 		if req.Status != nil {
-			release.Status = *req.Status
+			updated.Status = *req.Status
 		}
 		if req.Mandatory != nil {
-			release.Mandatory = *req.Mandatory
+			updated.Mandatory = *req.Mandatory
 		}
 		if req.RolloutPercent != nil {
-			release.RolloutPercent = clampPercent(*req.RolloutPercent)
+			updated.RolloutPercent = clampPercent(*req.RolloutPercent)
 		}
 		if req.DownloadURL != nil {
-			release.DownloadURL = *req.DownloadURL
+			updated.DownloadURL = *req.DownloadURL
 		}
 		if req.PackageSHA256 != nil {
-			release.PackageSHA256 = *req.PackageSHA256
+			updated.PackageSHA256 = *req.PackageSHA256
 		}
 		if req.ReleaseNotes != nil {
-			release.ReleaseNotes = *req.ReleaseNotes
+			updated.ReleaseNotes = *req.ReleaseNotes
 		}
 		if req.SignerThumbprint != nil {
-			release.SignerThumbprint = *req.SignerThumbprint
+			updated.SignerThumbprint = *req.SignerThumbprint
 		}
 		if req.MainBinaryHash != nil {
-			release.MainBinaryHash = *req.MainBinaryHash
+			updated.MainBinaryHash = *req.MainBinaryHash
 		}
 		if req.MinSupportedVersion != nil {
-			release.MinSupportedVersion = *req.MinSupportedVersion
+			updated.MinSupportedVersion = *req.MinSupportedVersion
 		}
 		if req.ResourceManifestHash != nil {
-			release.ResourceManifestHash = *req.ResourceManifestHash
+			updated.ResourceManifestHash = *req.ResourceManifestHash
 		}
 		if req.BusinessManifestSHA256 != nil {
-			release.BusinessManifestSHA256 = *req.BusinessManifestSHA256
+			updated.BusinessManifestSHA256 = *req.BusinessManifestSHA256
 		}
 		if req.ProtectedDBSchemaHash != nil {
-			release.ProtectedDBSchemaHash = *req.ProtectedDBSchemaHash
+			updated.ProtectedDBSchemaHash = *req.ProtectedDBSchemaHash
 		}
 		if req.ProtectedDBTablesHash != nil {
-			release.ProtectedDBTablesHash = *req.ProtectedDBTablesHash
+			updated.ProtectedDBTablesHash = *req.ProtectedDBTablesHash
 		}
 		if req.AssetsManifestSHA256 != nil {
-			release.AssetsManifestSHA256 = *req.AssetsManifestSHA256
+			updated.AssetsManifestSHA256 = *req.AssetsManifestSHA256
 		}
 		if req.WorkflowManifestSHA256 != nil {
-			release.WorkflowManifestSHA256 = *req.WorkflowManifestSHA256
+			updated.WorkflowManifestSHA256 = *req.WorkflowManifestSHA256
 		}
+		if req.ValidateIntegrityFields != nil && *req.ValidateIntegrityFields {
+			if missing := missingReleaseIntegrityFields(updated); len(missing) > 0 {
+				s.mu.Unlock()
+				writeError(w, http.StatusBadRequest, "RELEASE_FIELDS_MISSING", "missing release fields: "+strings.Join(missing, ", "))
+				return
+			}
+		}
+		*release = updated
 		s.auditLocked(adminID, "release.update", "release", releaseID, r, map[string]any{"app_id": appID})
 		err := s.saveLocked()
-		updated := *release
+		responseRelease := *release
 		s.mu.Unlock()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "SAVE_FAILED", err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"release": updated})
+		writeJSON(w, http.StatusOK, map[string]any{"release": responseRelease})
 		return
 	}
 
@@ -2203,6 +2223,32 @@ func (s *Server) updateInfoLocked(appID string, platform string, currentVersion 
 		PackageSHA256: latest.PackageSHA256,
 		ReleaseNotes:  latest.ReleaseNotes,
 	}
+}
+
+func missingReleaseIntegrityFields(release AppRelease) []string {
+	missing := []string{}
+	if release.BuildNumber <= 0 {
+		missing = append(missing, "build_number")
+	}
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{name: "main_binary_hash", value: release.MainBinaryHash},
+		{name: "signer_thumbprint", value: release.SignerThumbprint},
+		{name: "package_sha256", value: release.PackageSHA256},
+		{name: "business_manifest_sha256", value: release.BusinessManifestSHA256},
+		{name: "protected_db_schema_hash", value: release.ProtectedDBSchemaHash},
+		{name: "protected_db_tables_hash", value: release.ProtectedDBTablesHash},
+		{name: "assets_manifest_sha256", value: release.AssetsManifestSHA256},
+		{name: "workflow_manifest_sha256", value: release.WorkflowManifestSHA256},
+		{name: "download_url", value: release.DownloadURL},
+	} {
+		if strings.TrimSpace(field.value) == "" {
+			missing = append(missing, field.name)
+		}
+	}
+	return missing
 }
 
 func (s *Server) isBelowMinSupportedLocked(appID string, platform string, currentVersion string, minSupportedVersion string) bool {

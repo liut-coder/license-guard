@@ -529,11 +529,12 @@ config bundle
 
 说明：公共安装包不内置生产 license key；私有交付包可按客户策略预置激活信息。
 
-- [ ] Release API 校验字段完整性。
+- [x] Release API 校验字段完整性。
 
 关键字段缺失时提示：
 
 ```text
+build_number
 main_binary_hash
 signer_thumbprint
 package_sha256
@@ -544,6 +545,13 @@ assets_manifest_sha256
 workflow_manifest_sha256
 download_url
 ```
+
+已落地：Admin Release 创建/更新 API 支持 `validate_integrity_fields=true` 生产完整性校验模式。启用后，缺少上述字段会返回 `RELEASE_FIELDS_MISSING`，错误消息包含缺失字段列表；未启用时不影响 bootstrap/dev release。
+
+验证：
+
+- `TestAdminReleaseCreateRejectsMissingIntegrityFieldsWhenValidationEnabled`
+- `TestAdminReleasePatchPersistsVisionFlowResourceFields`
 
 - [ ] Admin UI 支持强制更新、最低支持版本、灰度比例的操作确认。
 - [x] 增加 update 行为 smoke：普通更新、强制更新、版本封禁、最低版本。
@@ -688,7 +696,7 @@ hash 字段缺失
 ### P2 验收
 
 - [ ] 客户授权包可生成并包含 license、entitlements、设备数、过期时间。
-- [ ] Release 字段缺失时 Admin/API 给出明确错误。
+- [x] Release 字段缺失时 Admin/API 给出明确错误。
 - [x] `min_supported_version` 能强制旧版本升级。
 - [ ] `rollout_percent` 对同一设备结果稳定。
 - [x] 版本 blocked 后客户端 verify 返回拒绝。

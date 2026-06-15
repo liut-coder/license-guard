@@ -599,6 +599,35 @@ func TestReleaseResourceManifestFieldsDenyVerification(t *testing.T) {
 	}
 }
 
+func TestAdminReleaseCreateRejectsMissingIntegrityFieldsWhenValidationEnabled(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	token := loginTestAdmin(t, server)
+	body := []byte(`{
+		"platform":"windows",
+		"version":"1.5.0",
+		"build_number":10500,
+		"status":"active",
+		"validate_integrity_fields":true
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/admin/apps/"+DemoAppID+"/releases", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("release create status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	bodyText := rec.Body.String()
+	for _, want := range []string{"RELEASE_FIELDS_MISSING", "main_binary_hash", "business_manifest_sha256", "download_url"} {
+		if !strings.Contains(bodyText, want) {
+			t.Fatalf("release create error %q missing %q", bodyText, want)
+		}
+	}
+}
+
 func TestAdminReleasePatchPersistsVisionFlowResourceFields(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {
@@ -610,7 +639,8 @@ func TestAdminReleasePatchPersistsVisionFlowResourceFields(t *testing.T) {
 		"protected_db_schema_hash":"schema-v1",
 		"protected_db_tables_hash":"tables-v1",
 		"assets_manifest_sha256":"assets-v1",
-		"workflow_manifest_sha256":"workflow-v1"
+		"workflow_manifest_sha256":"workflow-v1",
+		"validate_integrity_fields":true
 	}`)
 	req := httptest.NewRequest(http.MethodPatch, "/admin/apps/"+DemoAppID+"/releases/rel_demo_nax_142", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
