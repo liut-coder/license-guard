@@ -2,6 +2,8 @@ package licensecore
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -101,5 +103,38 @@ func TestNewServerWithStoreOptionsPropagatesLoadErrors(t *testing.T) {
 	_, err := NewServerWithStoreOptions(t.TempDir(), store, ServerOptions{SeedDemoData: false})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestServerReusesSigningKeyFromPersistentKeyDir(t *testing.T) {
+	storeDir := t.TempDir()
+	keyDir := t.TempDir()
+
+	store, err := NewJSONStore(storeDir)
+	if err != nil {
+		t.Fatalf("NewJSONStore() error = %v", err)
+	}
+	first, err := NewServerWithStoreOptions(keyDir, store, ServerOptions{SeedDemoData: true})
+	if err != nil {
+		t.Fatalf("first NewServerWithStoreOptions() error = %v", err)
+	}
+	firstPublicKey := first.publicKeyString()
+	if firstPublicKey == "" {
+		t.Fatal("first public key is empty")
+	}
+	if _, err := os.Stat(filepath.Join(keyDir, "signing-key.json")); err != nil {
+		t.Fatalf("signing-key.json was not persisted: %v", err)
+	}
+
+	restartedStore, err := NewJSONStore(storeDir)
+	if err != nil {
+		t.Fatalf("restart NewJSONStore() error = %v", err)
+	}
+	restarted, err := NewServerWithStoreOptions(keyDir, restartedStore, ServerOptions{SeedDemoData: true})
+	if err != nil {
+		t.Fatalf("restart NewServerWithStoreOptions() error = %v", err)
+	}
+	if got := restarted.publicKeyString(); got != firstPublicKey {
+		t.Fatalf("public key changed after restart: got %q, want %q", got, firstPublicKey)
 	}
 }

@@ -814,7 +814,7 @@ hash 字段缺失
 ### P1 验收
 
 - [ ] 使用部署模板可启动 PostgreSQL、迁移和 License Guard API。
-- [ ] `-key-dir` 持久化，重启服务后 public key 不变化。
+- [x] `-key-dir` 持久化，重启服务后 public key 不变化。
 - [x] Admin UI 可下载 VisionFlow 接入包。
 - [x] 接入包不包含 SDK secret、私钥、admin token、生产 license key。
 - [x] Admin UI 可查看和编辑 VisionFlow capability policy。
@@ -827,7 +827,9 @@ hash 字段缺失
 - [x] Admin 登录、activate、verify 的限流或失败延迟生效。
 - [x] 过期 challenge 会被清理。
 - [x] 生产 CORS/HTTPS 配置有文档和模板。
-- [x] 生产模式会 fail fast 拒绝 JSON store、缺失 `-key-dir`、空 CORS 或通配 CORS。
+- [x] 生产模式会 fail fast 拒绝 JSON store、缺失 `-key-dir`、空 CORS、通配 CORS、HTTP CORS origin 或非 HTTPS public base URL。
+
+`-key-dir` 持久化验证：`TestServerReusesSigningKeyFromPersistentKeyDir` 会用同一 store 和同一 `key-dir` 重建 Server，确认 `signing-key.json` 已落盘且重启后的 `/v1/public-key` 值不变化。
 
 ### P2 验收
 
