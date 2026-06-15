@@ -998,6 +998,31 @@ func TestHeartbeatRecordsBusinessIntegrityAndDeniesTamperedStatus(t *testing.T) 
 	}
 }
 
+func TestHighRiskSignalsUseShortTokenTTL(t *testing.T) {
+	server, err := NewServer(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	server.mu.Lock()
+	server.data.Settings.DefaultTokenTTLMinutes = 120
+	server.data.Settings.MediumRiskTokenTTLMinutes = 5
+	server.mu.Unlock()
+
+	verifyResp := activateDemoLicense(t, server, "high-risk-ttl-install", map[string]any{
+		"suspicious_modules": []string{"mod1", "mod2", "mod3", "mod4", "mod5", "mod6", "mod7"},
+	})
+	if !verifyResp.Allowed || verifyResp.ExpiresAt == nil {
+		t.Fatalf("verify response = %#v, want allowed short token", verifyResp)
+	}
+	if verifyResp.Risk.Level != "high" || !containsString(verifyResp.Risk.Actions, "shorten_token_ttl") {
+		t.Fatalf("risk = %#v, want high risk with shorten_token_ttl action", verifyResp.Risk)
+	}
+	ttl := time.Until(*verifyResp.ExpiresAt)
+	if ttl > 10*time.Minute {
+		t.Fatalf("token ttl = %s, want shortened high-risk ttl near 5m", ttl)
+	}
+}
+
 func TestVisionFlowAppCreateSeedsDefaultCapabilityPolicies(t *testing.T) {
 	server, err := NewServer(t.TempDir())
 	if err != nil {

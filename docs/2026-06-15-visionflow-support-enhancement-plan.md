@@ -676,7 +676,14 @@ hash 字段缺失
 - [ ] 增加可疑模块和 VM 指标采集。
 - [ ] 增加 VisionFlow 业务定义完整性风险事件。
 - [ ] 风险信号只参与评分，不单点永久封禁。
-- [ ] 高价值功能可缩短 token TTL。
+- [x] 高价值功能可缩短 token TTL。
+
+已落地：medium/high risk 且未直接 deny 的授权响应使用 `medium_risk_token_ttl_minutes` 生成短 token；high risk 会在 `risk.actions` 中包含 `shorten_token_ttl`，便于客户端和诊断解释。
+
+验证：
+
+- `TestHighRiskSignalsUseShortTokenTTL`
+
 - [ ] 增加异常系统时间风险事件。
 - [ ] 将 SDK 拆成稳定版本或子模块，发布 tag，避免客户端长期依赖服务端仓库主分支。
 
@@ -760,7 +767,7 @@ hash 字段缺失
 - [ ] debugger / suspicious modules / VM indicators 能进入 integrity report。
 - [x] VisionFlow `business_manifest_mismatch`、`protected_db_definition_mismatch`、`asset_manifest_mismatch`、`workflow_manifest_mismatch` 能形成风险事件。
 - [ ] VisionFlow 上报 DB 加密或密钥读取失败时能形成独立诊断事件，不和 license 过期、吊销混淆。
-- [ ] 高风险设备可触发短 token TTL 或 deny。
+- [x] 高风险设备可触发短 token TTL 或 deny。
 - [ ] SDK 有明确版本 tag 或子模块发布方案。
 
 ## 6. 非目标

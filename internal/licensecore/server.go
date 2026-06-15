@@ -1631,7 +1631,7 @@ func (s *Server) processClientVerification(w http.ResponseWriter, r *http.Reques
 
 	settings := s.settingsLocked()
 	tokenTTL := time.Duration(settings.DefaultTokenTTLMinutes) * time.Minute
-	if risk.Level == "medium" {
+	if risk.Level == "medium" || risk.Level == "high" {
 		tokenTTL = time.Duration(settings.MediumRiskTokenTTLMinutes) * time.Minute
 	}
 	expiresAt := time.Now().Add(tokenTTL)
@@ -1812,6 +1812,9 @@ func (s *Server) evaluateIntegrityLocked(appID string, deviceID string, licenseI
 	}
 	if len(actions) == 0 {
 		actions = []string{"allow"}
+	}
+	if level == "high" && !deny {
+		actions = append(actions, "shorten_token_ttl")
 	}
 
 	return RiskResult{Level: level, Score: score, Actions: uniqueStrings(actions)}, exactRelease, deny
